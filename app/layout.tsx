@@ -17,9 +17,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Soon ATL — Carpool Coordination",
+  title: "Soon ATL",
   description:
-    "Coordinate carpools for your weekly events. Drivers and riders matched automatically.",
+    "Soon ATL is work in progress. Ask JP for access or more information.",
 };
 
 export default function RootLayout({
