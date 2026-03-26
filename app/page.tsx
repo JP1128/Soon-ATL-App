@@ -88,12 +88,12 @@ export default async function HomePage(): Promise<React.ReactElement> {
       <p className="text-xs font-medium tracking-[0.3em] text-muted-foreground uppercase">
         Atlanta
       </p>
-      <h1 className="mt-1 text-6xl font-bold tracking-tight sm:text-7xl">
+      <h1 className="mt-1 text-5xl font-bold tracking-tight tall:text-6xl xtall:text-7xl">
         SOON
       </h1>
 
       {/* Main content area */}
-      <div className="mt-10 flex w-full flex-col items-center gap-4">
+      <div className="mt-6 tall:mt-8 xtall:mt-10 flex w-full flex-col items-center gap-4">
         {!user && (
           <a href="/api/auth/google">
             <Button size="lg" className="rounded-full px-8">Login</Button>

@@ -37,7 +37,9 @@ interface ExistingResponse {
 
 interface EventFormProps {
   eventId: string;
+  eventTitle: string;
   existingResponse: ExistingResponse | null;
+  defaultRole: string | null;
 }
 
 function parseTime(time: string): { hour: string; minute: string; period: string } {
@@ -59,20 +61,30 @@ function toTime24(hour: string, minute: string, period: string): string {
 
 export function EventForm({
   eventId,
+  eventTitle,
   existingResponse,
+  defaultRole,
 }: EventFormProps): React.ReactElement {
   const initialBeforeRole: LegRole | null =
     existingResponse?.before_role ??
     (existingResponse?.role === "driver" || existingResponse?.role === "rider"
       ? (existingResponse.role as LegRole)
-      : null);
+      : existingResponse
+        ? null
+        : defaultRole === "driver" || defaultRole === "rider"
+          ? (defaultRole as LegRole)
+          : null);
   const initialAfterRole: LegRole | null =
     existingResponse?.after_role ??
     (existingResponse?.needs_return_ride && existingResponse?.role === "driver"
       ? "driver"
       : existingResponse?.needs_return_ride && existingResponse?.role === "rider"
         ? "rider"
-        : null);
+        : existingResponse
+          ? null
+          : defaultRole === "driver" || defaultRole === "rider"
+            ? (defaultRole as LegRole)
+            : null);
 
   const initialTime = parseTime(existingResponse?.departure_time ?? "");
 
@@ -244,7 +256,7 @@ export function EventForm({
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4 tall:space-y-5 xtall:space-y-8">
       {/* Progress bar */}
       <div className="flex items-center justify-center gap-1.5">
         {visibleStepIds.map((_, i) => (
@@ -261,9 +273,9 @@ export function EventForm({
 
       {/* Step 0: Selection */}
       {step === 0 && (
-        <div className="space-y-8">
+        <div className="space-y-4 tall:space-y-5 xtall:space-y-8">
           <div className="text-center">
-            <h2 className="text-xl font-semibold tracking-tight">
+            <h2 className="text-lg font-semibold tracking-tight tall:text-xl">
               How would you like to participate?
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -274,7 +286,7 @@ export function EventForm({
           {/* Before the event */}
           <div className="space-y-3">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">
-              Before the event
+              Before {eventTitle}
             </p>
             <div className="grid grid-cols-2 gap-3">
               <button
@@ -282,13 +294,13 @@ export function EventForm({
                 onClick={() =>
                   setBeforeRole((prev) => (prev === "rider" ? null : "rider"))
                 }
-                className={`flex flex-col items-center gap-2 rounded-2xl border px-4 py-5 text-center transition-all ${
+                className={`flex flex-col items-center gap-1.5 xtall:gap-2 rounded-2xl border px-4 py-3 tall:py-3.5 xtall:py-5 text-center transition-all ${
                   beforeRole === "rider"
                     ? "border-foreground bg-foreground text-background"
                     : "border-border hover:border-foreground/20 hover:bg-muted/50"
                 }`}
               >
-                <HugeiconsIcon icon={LocationUser01Icon} className="size-6" strokeWidth={1.5} />
+                <HugeiconsIcon icon={LocationUser01Icon} className="size-5 xtall:size-6" strokeWidth={1.5} />
                 <span className="text-sm font-medium">Need a ride</span>
               </button>
               <button
@@ -296,13 +308,13 @@ export function EventForm({
                 onClick={() =>
                   setBeforeRole((prev) => (prev === "driver" ? null : "driver"))
                 }
-                className={`flex flex-col items-center gap-2 rounded-2xl border px-4 py-5 text-center transition-all ${
+                className={`flex flex-col items-center gap-1.5 xtall:gap-2 rounded-2xl border px-4 py-3 tall:py-3.5 xtall:py-5 text-center transition-all ${
                   beforeRole === "driver"
                     ? "border-foreground bg-foreground text-background"
                     : "border-border hover:border-foreground/20 hover:bg-muted/50"
                 }`}
               >
-                <HugeiconsIcon icon={Car01Icon} className="size-6" strokeWidth={1.5} />
+                <HugeiconsIcon icon={Car01Icon} className="size-5 xtall:size-6" strokeWidth={1.5} />
                 <span className="text-sm font-medium">Can drive</span>
               </button>
             </div>
@@ -311,7 +323,7 @@ export function EventForm({
           {/* After the event */}
           <div className="space-y-3">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">
-              After the event
+              After {eventTitle}
             </p>
             <div className="grid grid-cols-2 gap-3">
               <button
@@ -319,13 +331,13 @@ export function EventForm({
                 onClick={() =>
                   setAfterRole((prev) => (prev === "rider" ? null : "rider"))
                 }
-                className={`flex flex-col items-center gap-2 rounded-2xl border px-4 py-5 text-center transition-all ${
+                className={`flex flex-col items-center gap-1.5 xtall:gap-2 rounded-2xl border px-4 py-3 tall:py-3.5 xtall:py-5 text-center transition-all ${
                   afterRole === "rider"
                     ? "border-foreground bg-foreground text-background"
                     : "border-border hover:border-foreground/20 hover:bg-muted/50"
                 }`}
               >
-                <HugeiconsIcon icon={LocationUser01Icon} className="size-6" strokeWidth={1.5} />
+                <HugeiconsIcon icon={LocationUser01Icon} className="size-5 xtall:size-6" strokeWidth={1.5} />
                 <span className="text-sm font-medium">Need a ride</span>
               </button>
               <button
@@ -333,13 +345,13 @@ export function EventForm({
                 onClick={() =>
                   setAfterRole((prev) => (prev === "driver" ? null : "driver"))
                 }
-                className={`flex flex-col items-center gap-2 rounded-2xl border px-4 py-5 text-center transition-all ${
+                className={`flex flex-col items-center gap-1.5 xtall:gap-2 rounded-2xl border px-4 py-3 tall:py-3.5 xtall:py-5 text-center transition-all ${
                   afterRole === "driver"
                     ? "border-foreground bg-foreground text-background"
                     : "border-border hover:border-foreground/20 hover:bg-muted/50"
                 }`}
               >
-                <HugeiconsIcon icon={Car01Icon} className="size-6" strokeWidth={1.5} />
+                <HugeiconsIcon icon={Car01Icon} className="size-5 xtall:size-6" strokeWidth={1.5} />
                 <span className="text-sm font-medium">Can drive</span>
               </button>
             </div>
@@ -352,7 +364,7 @@ export function EventForm({
               setBeforeRole(null);
               setAfterRole(null);
             }}
-            className={`flex w-full items-center justify-center gap-2 rounded-2xl border px-4 py-4 text-center transition-all ${
+            className={`flex w-full items-center justify-center gap-2 rounded-2xl border px-4 py-2.5 tall:py-3 xtall:py-4 text-center transition-all ${
               isAttendingOnly
                 ? "border-foreground bg-foreground text-background"
                 : "border-border hover:border-foreground/20 hover:bg-muted/50"
@@ -372,7 +384,7 @@ export function EventForm({
 
       {/* Step 1: Before the event details */}
       {step === 1 && (
-        <div className="space-y-8">
+        <div className="space-y-4 tall:space-y-5 xtall:space-y-8">
           <div>
             <button
               type="button"
@@ -385,7 +397,7 @@ export function EventForm({
               {beforeRole === "driver" ? "Driving details" : "Pickup details"}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Before the event
+              Before {eventTitle}
             </p>
           </div>
 
@@ -507,7 +519,7 @@ export function EventForm({
 
       {/* Step 2: After the event details */}
       {step === 2 && (
-        <div className="space-y-8">
+        <div className="space-y-4 tall:space-y-5 xtall:space-y-8">
           <div>
             <button
               type="button"
@@ -520,7 +532,7 @@ export function EventForm({
               {afterRole === "driver" ? "Driving details" : "Drop-off details"}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              After the event
+              After {eventTitle}
             </p>
           </div>
 
@@ -594,7 +606,7 @@ export function EventForm({
 
       {/* Step 3: Additional note & submit */}
       {step === 3 && (
-        <div className="space-y-8">
+        <div className="space-y-4 tall:space-y-5 xtall:space-y-8">
           <div>
             <button
               type="button"

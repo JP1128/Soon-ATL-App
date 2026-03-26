@@ -26,16 +26,25 @@ export default async function EventPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Get user's existing response if any
+  // Get user's existing response and profile defaults
   let existingResponse = null;
+  let defaultRole: string | null = null;
   if (user) {
-    const { data } = await supabase
-      .from("responses")
-      .select("*")
-      .eq("event_id", id)
-      .eq("user_id", user.id)
-      .maybeSingle();
-    existingResponse = data;
+    const [{ data: response }, { data: profile }] = await Promise.all([
+      supabase
+        .from("responses")
+        .select("*")
+        .eq("event_id", id)
+        .eq("user_id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("profiles")
+        .select("default_role")
+        .eq("id", user.id)
+        .single(),
+    ]);
+    existingResponse = response;
+    defaultRole = profile?.default_role ?? null;
   }
 
   const isOpen = event.status === "open";
@@ -51,9 +60,9 @@ export default async function EventPage({
     : null;
 
   return (
-    <div className="w-full max-w-lg px-4 py-8">
-      <div className="mb-6 text-center">
-        <h1 className="text-2xl font-bold tracking-tight">{event.title}</h1>
+    <div className="w-full max-w-lg px-4 py-4 tall:py-5 xtall:py-8">
+      <div className="mb-3 tall:mb-4 xtall:mb-6 text-center">
+        <h1 className="text-xl font-bold tracking-tight tall:text-2xl">{event.title}</h1>
         <p className="mt-1 text-muted-foreground">
           {formattedDate}{formattedTime ? ` at ${formattedTime}` : ""} · {event.location}
         </p>
@@ -83,10 +92,12 @@ export default async function EventPage({
           </p>
         </div>
       ) : (
-        <div className="rounded-2xl border p-5">
+        <div className="rounded-2xl border p-3.5 tall:p-4 xtall:p-5">
           <EventForm
             eventId={id}
+            eventTitle={event.title}
             existingResponse={existingResponse}
+            defaultRole={defaultRole}
           />
         </div>
       )}

@@ -40,7 +40,7 @@ export default function RootLayout({
       )}
     >
       <body className="flex h-full flex-col overflow-hidden">
-        <main className="flex flex-1 flex-col items-center justify-center overflow-y-auto pb-20">{children}</main>
+        <main className="flex flex-1 flex-col items-center justify-center overflow-y-auto overscroll-contain pb-20">{children}</main>
         <BottomNavServer />
       </body>
     </html>

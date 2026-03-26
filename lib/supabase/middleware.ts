@@ -37,14 +37,14 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   // Redirect unauthenticated users to login, except for public routes
   const isPublicRoute =
     request.nextUrl.pathname === "/" ||
-    request.nextUrl.pathname === "/login" ||
+
     request.nextUrl.pathname.startsWith("/auth/") ||
     request.nextUrl.pathname.startsWith("/api/") ||
     request.nextUrl.pathname.startsWith("/event/");
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = "/";
     return NextResponse.redirect(url);
   }
 

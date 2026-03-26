@@ -150,7 +150,7 @@ export function DraftEventEditor({ event }: DraftEventEditorProps): React.ReactE
   const canActivate = title.trim() !== "" && location.trim() !== "";
 
   return (
-    <div className="flex flex-col items-center justify-center" style={{ minHeight: "calc(100vh - 12rem)" }}>
+    <div className="flex flex-col items-center">
       {lastSaved && (
         <p className="w-full max-w-md text-xs text-muted-foreground text-right mb-2 px-1">Last saved {lastSaved}</p>
       )}

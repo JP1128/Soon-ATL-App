@@ -122,7 +122,7 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
               value={defaultRole}
               onValueChange={(val) => setDefaultRole(val as ResponseRole)}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="w-full capitalize">
                 <SelectValue placeholder="Select a default role" />
               </SelectTrigger>
               <SelectContent>

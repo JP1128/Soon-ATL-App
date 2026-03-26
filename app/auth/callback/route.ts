@@ -6,7 +6,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const code = searchParams.get("code");
   const errorParam = searchParams.get("error");
   const errorDescription = searchParams.get("error_description");
-  const next = searchParams.get("next") ?? "/dashboard";
+  const next = searchParams.get("next") ?? "/";
 
   console.log("Auth callback hit:", {
     hasCode: !!code,
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   if (errorParam) {
     console.error("OAuth error from provider:", errorParam, errorDescription);
-    return NextResponse.redirect(`${origin}/login`);
+    return NextResponse.redirect(`${origin}/`);
   }
 
   if (code) {
@@ -50,5 +50,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     console.error("Session exchange failed:", error);
   }
 
-  return NextResponse.redirect(`${origin}/login`);
+  return NextResponse.redirect(`${origin}/`);
 }

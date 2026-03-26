@@ -24,8 +24,12 @@ export default async function ProfilePage(): Promise<React.ReactElement> {
   }
 
   return (
-    <div className="w-full max-w-lg px-5 py-8">
-      <ProfileForm profile={profile} />
+    <div className="flex flex-1 w-full flex-col">
+      <div className="flex flex-1 items-center overflow-y-auto">
+        <div className="mx-auto w-full max-w-lg px-5 pb-24">
+          <ProfileForm profile={profile} />
+        </div>
+      </div>
     </div>
   );
 }
