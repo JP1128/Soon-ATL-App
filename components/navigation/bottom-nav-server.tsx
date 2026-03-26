@@ -27,6 +27,7 @@ export async function BottomNavServer(): Promise<React.ReactElement | null> {
       fullName={profile.full_name}
       avatarUrl={profile.avatar_url}
       isOrganizer={profile.role === "organizer"}
+      hasPhoneNumber={!!profile.phone_number}
     />
   );
 }

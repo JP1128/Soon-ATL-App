@@ -20,6 +20,7 @@ export interface Profile {
   role: UserRole;
   default_role: ResponseRole | null;
   university: University | null;
+  phone_number: string | null;
   created_at: string;
 }
 

@@ -20,17 +20,21 @@ interface BottomNavProps {
   fullName: string;
   avatarUrl: string | null;
   isOrganizer: boolean;
+  hasPhoneNumber: boolean;
 }
 
 export function BottomNav({
   fullName,
   avatarUrl,
   isOrganizer,
+  hasPhoneNumber,
 }: BottomNavProps): React.ReactElement {
   const pathname = usePathname();
   const router = useRouter();
   const prevPathRef = useRef(pathname);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [isShaking, setIsShaking] = useState(false);
+  const chipRef = useRef<HTMLAnchorElement>(null);
 
   const mainPages = ["/", "/profile", "/dashboard", "/dashboard/past-events"];
   const isMainPage = mainPages.includes(pathname);
@@ -44,6 +48,16 @@ export function BottomNav({
       return () => clearTimeout(timer);
     }
   }, [pathname]);
+
+  // Listen for shake-profile-chip custom event
+  useEffect(() => {
+    function handleShake(): void {
+      setIsShaking(true);
+      setTimeout(() => setIsShaking(false), 600);
+    }
+    window.addEventListener("shake-profile-chip", handleShake);
+    return () => window.removeEventListener("shake-profile-chip", handleShake);
+  }, []);
 
   const initials = fullName
     .split(" ")
@@ -132,9 +146,16 @@ export function BottomNav({
       )}
 
       <Link
+        ref={chipRef}
         href="/profile"
-        className={`inline-flex items-center gap-2.5 rounded-full border border-border/50 bg-background px-4 py-2 text-sm shadow-lg transition-all duration-200 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isNavigating ? "scale-95" : "scale-100"}`}
+        className={`relative inline-flex items-center gap-2.5 rounded-full border border-border/50 bg-background px-4 py-2 text-sm shadow-lg transition-all duration-200 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isNavigating ? "scale-95" : "scale-100"} ${isShaking ? "animate-[shake_0.5s_ease-in-out]" : ""}`}
       >
+        {!hasPhoneNumber && (
+          <span className="absolute -top-1 -right-1 flex size-3">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-destructive/75" />
+            <span className="relative inline-flex size-3 rounded-full bg-destructive" />
+          </span>
+        )}
         <Avatar size="sm">
           <AvatarImage src={avatarUrl ?? undefined} alt={fullName} />
           <AvatarFallback>{initials}</AvatarFallback>

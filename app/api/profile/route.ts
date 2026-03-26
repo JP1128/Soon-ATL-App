@@ -35,7 +35,7 @@ export async function PATCH(request: Request): Promise<NextResponse> {
   }
 
   const body = await request.json();
-  const allowedFields = ["full_name", "default_role", "university"];
+  const allowedFields = ["full_name", "default_role", "university", "phone_number"];
   const updates: Record<string, unknown> = {};
 
   for (const field of allowedFields) {
@@ -46,6 +46,15 @@ export async function PATCH(request: Request): Promise<NextResponse> {
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
+  }
+
+  // Validate phone_number (must be exactly 10 digits or null)
+  if (updates.phone_number !== undefined && updates.phone_number !== null) {
+    const digits = (updates.phone_number as string).replace(/\D/g, "");
+    if (digits.length !== 10) {
+      return NextResponse.json({ error: "Invalid phone number" }, { status: 400 });
+    }
+    updates.phone_number = digits;
   }
 
   // Validate default_role

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,9 +34,27 @@ const UNIVERSITY_OPTIONS: University[] = [
   "Other",
 ];
 
+function formatPhoneNumber(value: string): string {
+  const digits = value.replace(/\D/g, "");
+  const limited = digits.slice(0, 10);
+  if (limited.length === 0) return "";
+  if (limited.length <= 3) return `(${limited}`;
+  if (limited.length <= 6) return `(${limited.slice(0, 3)}) ${limited.slice(3)}`;
+  return `(${limited.slice(0, 3)}) ${limited.slice(3, 6)}-${limited.slice(6)}`;
+}
+
+function isValidPhoneNumber(value: string): boolean {
+  if (value === "") return true;
+  const digits = value.replace(/\D/g, "");
+  return digits.length === 10;
+}
+
 export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
   const router = useRouter();
   const [fullName, setFullName] = useState(profile.full_name);
+  const [phoneNumber, setPhoneNumber] = useState(
+    profile.phone_number ? formatPhoneNumber(profile.phone_number) : ""
+  );
   const [defaultRole, setDefaultRole] = useState<ResponseRole | "">(
     profile.default_role ?? ""
   );
@@ -46,6 +64,18 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const phoneInputRef = useRef<HTMLInputElement>(null);
+  const needsPhone = !profile.phone_number;
+
+  const phoneValid = isValidPhoneNumber(phoneNumber);
+
+  // Auto-focus and scroll to phone field when it needs attention
+  useEffect(() => {
+    if (needsPhone && phoneInputRef.current) {
+      phoneInputRef.current.focus();
+      phoneInputRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [needsPhone]);
 
   async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
@@ -58,6 +88,7 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         full_name: fullName,
+        phone_number: phoneNumber ? phoneNumber.replace(/\D/g, "") : null,
         default_role: defaultRole || null,
         university: university || null,
       }),
@@ -107,6 +138,24 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
               required
             />
           </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="phone_number" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Phone Number</Label>
+            <Input
+              ref={phoneInputRef}
+              id="phone_number"
+              type="tel"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(formatPhoneNumber(e.target.value))}
+              placeholder="(555) 123-4567"
+              className={needsPhone && !phoneNumber ? "animate-[attention-pulse_1.5s_ease-in-out_3] border-destructive" : ""}
+            />
+            {needsPhone && !phoneNumber && (
+              <p className="text-xs text-destructive">Phone number is required</p>
+            )}
+            {phoneNumber && !phoneValid && (
+              <p className="text-xs text-destructive">Enter a valid 10-digit US phone number</p>
+            )}
+          </div>
         </div>
 
         <div className="space-y-4">
@@ -155,7 +204,7 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
         </div>
 
         {error && <p className="text-sm text-destructive">{error}</p>}
-        <Button type="submit" disabled={isSaving} className="w-full rounded-xl">
+        <Button type="submit" disabled={isSaving || !phoneValid} className="w-full rounded-xl">
           {isSaving ? "Saving…" : "Save Changes"}
         </Button>
       </form>

@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -89,6 +88,8 @@ export function EventForm({
   const initialTime = parseTime(existingResponse?.departure_time ?? "");
 
   const [step, setStep] = useState(0);
+  const [direction, setDirection] = useState<"forward" | "backward">("forward");
+  const [stepKey, setStepKey] = useState(0);
   const [beforeRole, setBeforeRole] = useState<LegRole | null>(initialBeforeRole);
   const [afterRole, setAfterRole] = useState<LegRole | null>(initialAfterRole);
 
@@ -174,12 +175,34 @@ export function EventForm({
   ];
   const currentStepIndex = visibleStepIds.indexOf(step);
 
+  const prevVisibleRef = useRef<number[]>(visibleStepIds);
+  const [newDots, setNewDots] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    const prev = prevVisibleRef.current;
+    const added = new Set<number>();
+    visibleStepIds.forEach((id) => {
+      if (!prev.includes(id)) added.add(id);
+    });
+    if (added.size > 0) {
+      setNewDots(added);
+      const timer = setTimeout(() => setNewDots(new Set()), 400);
+      prevVisibleRef.current = visibleStepIds;
+      return () => clearTimeout(timer);
+    }
+    prevVisibleRef.current = visibleStepIds;
+  }, [beforeRole, afterRole]);
+
   function handleNext(): void {
     if (!canProceed()) return;
+    setDirection("forward");
+    setStepKey((k) => k + 1);
     setStep(getNextStep(step));
   }
 
   function handleBack(): void {
+    setDirection("backward");
+    setStepKey((k) => k + 1);
     setStep(getPrevStep(step));
   }
 
@@ -229,29 +252,27 @@ export function EventForm({
 
   if (submitted) {
     return (
-      <Card>
-        <CardContent className="py-10 text-center">
-          <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-foreground/5">
-            <HugeiconsIcon icon={CheckmarkCircle02Icon} className="size-6" />
-          </div>
-          <p className="text-lg font-semibold tracking-tight">
-            You&apos;re all set!
-          </p>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            We&apos;ll notify you when carpool assignments are ready.
-          </p>
-          <Button
-            variant="outline"
-            className="mt-6"
-            onClick={() => {
-              setSubmitted(false);
-              setStep(0);
-            }}
-          >
-            Edit response
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="py-10 text-center">
+        <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-foreground/5">
+          <HugeiconsIcon icon={CheckmarkCircle02Icon} className="size-6" />
+        </div>
+        <p className="text-lg font-semibold tracking-tight">
+          You&apos;re all set!
+        </p>
+        <p className="mt-1.5 text-sm text-muted-foreground">
+          We&apos;ll notify you when carpool assignments are ready.
+        </p>
+        <Button
+          variant="outline"
+          className="mt-6"
+          onClick={() => {
+            setSubmitted(false);
+            setStep(0);
+          }}
+        >
+          Edit response
+        </Button>
+      </div>
     );
   }
 
@@ -259,17 +280,30 @@ export function EventForm({
     <div className="space-y-4 tall:space-y-5 xtall:space-y-8">
       {/* Progress bar */}
       <div className="flex items-center justify-center gap-1.5">
-        {visibleStepIds.map((_, i) => (
+        {visibleStepIds.map((stepId, i) => (
           <div
-            key={i}
+            key={stepId}
             className={`h-1 rounded-full transition-all duration-300 ${
               i <= currentStepIndex
                 ? "w-10 bg-foreground"
                 : "w-6 bg-foreground/10"
             }`}
+            style={
+              newDots.has(stepId)
+                ? { animation: "stepper-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1)" }
+                : undefined
+            }
           />
         ))}
       </div>
+
+      <div className="relative overflow-hidden">
+        <div
+          key={stepKey}
+          style={{
+            animation: `${direction === "forward" ? "slide-in-right" : "slide-in-left"} 0.35s cubic-bezier(0.16, 1, 0.3, 1)`,
+          }}
+        >
 
       {/* Step 0: Selection */}
       {step === 0 && (
@@ -413,7 +447,7 @@ export function EventForm({
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Hour" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent align="start" collisionPadding={16}>
                     {Array.from({ length: 12 }, (_, i) =>
                       (i + 1).toString()
                     ).map((h) => (
@@ -430,7 +464,7 @@ export function EventForm({
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Min" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent align="start" collisionPadding={16}>
                     {["00", "15", "30", "45"].map((m) => (
                       <SelectItem key={m} value={m}>
                         {m}
@@ -438,15 +472,13 @@ export function EventForm({
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={timePeriod} onValueChange={(v) => setTimePeriod(v ?? "PM")}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="AM/PM" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="AM">AM</SelectItem>
-                    <SelectItem value="PM">PM</SelectItem>
-                  </SelectContent>
-                </Select>
+                <button
+                  type="button"
+                  onClick={() => setTimePeriod(timePeriod === "AM" ? "PM" : "AM")}
+                  className="flex h-9 min-w-14 shrink-0 items-center justify-center rounded-full border border-input bg-input/30 px-3 text-sm font-medium tabular-nums transition-colors hover:bg-input/50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 outline-none"
+                >
+                  {timePeriod || "PM"}
+                </button>
               </div>
             </div>
 
@@ -494,10 +526,10 @@ export function EventForm({
                     size="icon"
                     onClick={() =>
                       setAvailableSeats((prev) =>
-                        Math.min(10, parseInt(prev, 10) + 1).toString()
+                        Math.min(15, parseInt(prev, 10) + 1).toString()
                       )
                     }
-                    disabled={parseInt(availableSeats, 10) >= 10}
+                    disabled={parseInt(availableSeats, 10) >= 15}
                   >
                     +
                   </Button>
@@ -581,10 +613,10 @@ export function EventForm({
                     size="icon"
                     onClick={() =>
                       setAvailableSeats((prev) =>
-                        Math.min(10, parseInt(prev, 10) + 1).toString()
+                        Math.min(15, parseInt(prev, 10) + 1).toString()
                       )
                     }
-                    disabled={parseInt(availableSeats, 10) >= 10}
+                    disabled={parseInt(availableSeats, 10) >= 15}
                   >
                     +
                   </Button>
@@ -654,6 +686,9 @@ export function EventForm({
           </Button>
         </div>
       )}
+
+        </div>
+      </div>
     </div>
   );
 }

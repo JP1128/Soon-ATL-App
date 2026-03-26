@@ -83,7 +83,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
   }
 
   return (
-    <div className="flex w-full max-w-lg flex-col items-center px-6">
+    <div className="flex flex-1 w-full max-w-lg flex-col items-center justify-center px-6">
       {/* Brand */}
       <p className="text-xs font-medium tracking-[0.3em] text-muted-foreground uppercase">
         Atlanta
@@ -109,6 +109,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
               day: "numeric",
             })}${activeEvent.event_time ? ` · ${new Date(`1970-01-01T${activeEvent.event_time}`).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : ""} · ${activeEvent.location}`}
             status={userStatus}
+            hasPhoneNumber={!!profile?.phone_number}
           />
         )}
         {user && !activeEvent && (

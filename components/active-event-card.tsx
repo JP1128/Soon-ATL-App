@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 
@@ -11,6 +11,7 @@ interface ActiveEventCardProps {
   title: string;
   subtitle: string;
   status: UserEventStatus;
+  hasPhoneNumber: boolean;
 }
 
 const statusConfig: Record<
@@ -28,13 +29,39 @@ export function ActiveEventCard({
   title,
   subtitle,
   status,
+  hasPhoneNumber,
 }: ActiveEventCardProps): React.ReactElement {
   const router = useRouter();
   const [isPressed, setIsPressed] = useState(false);
+  const [isRejected, setIsRejected] = useState(false);
+  const [rejectedPhase, setRejectedPhase] = useState<"idle" | "rise" | "fall">("idle");
   const needsResponse = status === "needs-response";
 
+  // Two-phase rejected animation: rise to halfway, then fall back
+  useEffect(() => {
+    if (!isRejected) return;
+    setRejectedPhase("rise");
+    const riseTimer = setTimeout(() => setRejectedPhase("fall"), 350);
+    const resetTimer = setTimeout(() => {
+      setRejectedPhase("idle");
+      setIsRejected(false);
+    }, 900);
+    return () => {
+      clearTimeout(riseTimer);
+      clearTimeout(resetTimer);
+    };
+  }, [isRejected]);
+
   function handleClick(): void {
-    if (isPressed) return;
+    if (isPressed || isRejected) return;
+
+    if (!hasPhoneNumber) {
+      setIsRejected(true);
+      // Trigger profile chip shake
+      window.dispatchEvent(new CustomEvent("shake-profile-chip"));
+      return;
+    }
+
     setIsPressed(true);
     setTimeout(() => {
       router.push(`/event/${eventId}`);
@@ -48,12 +75,20 @@ export function ActiveEventCard({
       disabled={isPressed}
       className={`relative w-full overflow-hidden rounded-2xl border p-5 text-left transition-shadow ${
         isPressed ? "pointer-events-none" : "hover:bg-muted/50"
-      }`}
+      } ${rejectedPhase !== "idle" ? "animate-[shake_0.6s_ease-in-out_0.3s]" : ""}`}
     >
       {/* Fluid fill rising from bottom with wavy top */}
       <div
-        className={`absolute inset-x-0 bottom-0 transition-all duration-700 ease-[cubic-bezier(0.4,0,0.2,1)] ${
-          isPressed ? "h-[120%]" : needsResponse ? "h-[5%]" : "h-0"
+        className={`absolute inset-x-0 bottom-0 ease-in-out ${
+          isPressed
+            ? "h-[120%] transition-all duration-700"
+            : rejectedPhase === "rise"
+              ? "h-[50%] transition-all duration-350"
+              : rejectedPhase === "fall"
+                ? "h-0 transition-all duration-500"
+                : needsResponse
+                  ? "h-[5%] transition-all duration-700"
+                  : "h-0 transition-all duration-700"
         }`}
       >
         <svg
