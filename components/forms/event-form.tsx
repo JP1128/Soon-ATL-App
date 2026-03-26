@@ -2,22 +2,20 @@
 
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { TimeWheelPicker } from "@/components/ui/time-wheel-picker";
+import { AddressPickerOverlay } from "@/components/ui/address-picker-overlay";
+import type { AddressResult } from "@/components/ui/address-picker-overlay";
+import { ManualAddressOverlay } from "@/components/ui/manual-address-overlay";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Car01Icon,
   LocationUser01Icon,
   Coffee01Icon,
   CheckmarkCircle02Icon,
+  MapsSearchIcon,
+  TextIcon,
 } from "@hugeicons/core-free-icons";
 import type { LegRole } from "@/types/database";
 
@@ -96,6 +94,10 @@ export function EventForm({
   const [beforeAddress, setBeforeAddress] = useState(
     existingResponse?.pickup_address ?? ""
   );
+  const [beforeLat, setBeforeLat] = useState<number>(0);
+  const [beforeLng, setBeforeLng] = useState<number>(0);
+  const [beforeAddressType, setBeforeAddressType] = useState<"search" | "manual">("search");
+  const [beforeAddressMode, setBeforeAddressMode] = useState<"search" | "manual" | null>(null);
   const [timeHour, setTimeHour] = useState(initialTime.hour);
   const [timeMinute, setTimeMinute] = useState(initialTime.minute);
   const [timePeriod, setTimePeriod] = useState(initialTime.period);
@@ -106,12 +108,17 @@ export function EventForm({
   const [afterAddress, setAfterAddress] = useState(
     existingResponse?.return_address ?? ""
   );
+  const [afterLat, setAfterLat] = useState<number>(0);
+  const [afterLng, setAfterLng] = useState<number>(0);
+  const [afterAddressType, setAfterAddressType] = useState<"search" | "manual">("search");
+  const [afterAddressMode, setAfterAddressMode] = useState<"search" | "manual" | null>(null);
 
   const [note, setNote] = useState(existingResponse?.note ?? "");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [timeOpen, setTimeOpen] = useState(false);
 
   const isAttendingOnly = !beforeRole && !afterRole;
 
@@ -219,7 +226,11 @@ export function EventForm({
       before_role: beforeRole,
       after_role: afterRole,
       pickup_address: beforeAddress || null,
+      pickup_lat: beforeLat || null,
+      pickup_lng: beforeLng || null,
       return_address: afterAddress || null,
+      return_lat: afterLat || null,
+      return_lng: afterLng || null,
       departure_time: departureTime || null,
       available_seats:
         beforeRole === "driver" || afterRole === "driver"
@@ -442,58 +453,83 @@ export function EventForm({
                   ? "Latest departure time"
                   : "Earliest pickup time"}
               </Label>
-              <div className="flex items-center gap-2">
-                <Select value={timeHour} onValueChange={(v) => setTimeHour(v ?? "")}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Hour" />
-                  </SelectTrigger>
-                  <SelectContent align="start" collisionPadding={16}>
-                    {Array.from({ length: 12 }, (_, i) =>
-                      (i + 1).toString()
-                    ).map((h) => (
-                      <SelectItem key={h} value={h}>
-                        {h}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <span className="text-lg font-medium text-muted-foreground">
-                  :
-                </span>
-                <Select value={timeMinute} onValueChange={(v) => setTimeMinute(v ?? "")}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Min" />
-                  </SelectTrigger>
-                  <SelectContent align="start" collisionPadding={16}>
-                    {["00", "15", "30", "45"].map((m) => (
-                      <SelectItem key={m} value={m}>
-                        {m}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <button
-                  type="button"
-                  onClick={() => setTimePeriod(timePeriod === "AM" ? "PM" : "AM")}
-                  className="flex h-9 min-w-14 shrink-0 items-center justify-center rounded-full border border-input bg-input/30 px-3 text-sm font-medium tabular-nums transition-colors hover:bg-input/50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 outline-none"
-                >
-                  {timePeriod || "PM"}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setTimeOpen(true)}
+                className="flex h-9 w-full items-center rounded-4xl border border-input bg-input/30 px-3 text-base tabular-nums transition-colors hover:bg-input/50"
+              >
+                {timeHour || "–"}<span className="text-muted-foreground mx-0.5">:</span>{timeMinute || "00"} {timePeriod || "PM"}
+              </button>
+              <TimeWheelPicker
+                open={timeOpen}
+                onClose={() => setTimeOpen(false)}
+                hour={timeHour || "7"}
+                minute={timeMinute || "00"}
+                period={timePeriod || "PM"}
+                onChangeHour={(h) => setTimeHour(h)}
+                onChangeMinute={(m) => setTimeMinute(m)}
+                onChangePeriod={(p) => setTimePeriod(p)}
+                title={beforeRole === "driver" ? "Latest departure time" : "Earliest pickup time"}
+              />
             </div>
 
             <div className="space-y-2.5">
-              <Label htmlFor="before_address">
+              <Label>
                 {beforeRole === "driver"
                   ? "Departing from"
                   : "Pickup location"}
               </Label>
-              <Input
-                id="before_address"
-                placeholder="Enter address"
-                value={beforeAddress}
-                onChange={(e) => setBeforeAddress(e.target.value)}
-                required
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBeforeAddressType((t) => (t === "search" ? "manual" : "search"))}
+                  className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border transition-all hover:bg-muted/50"
+                  aria-label={beforeAddressType === "search" ? "Switch to manual entry" : "Switch to address search"}
+                >
+                  <HugeiconsIcon
+                    icon={beforeAddressType === "search" ? MapsSearchIcon : TextIcon}
+                    className="size-4 text-muted-foreground"
+                    strokeWidth={1.5}
+                  />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBeforeAddressMode(beforeAddressType)}
+                  className="flex h-9 flex-1 items-center rounded-4xl border border-input bg-input/30 px-3 text-sm transition-colors hover:bg-input/50"
+                >
+                  {beforeAddress ? (
+                    <span className="truncate">{beforeAddress}</span>
+                  ) : (
+                    <span className="text-muted-foreground">
+                      {beforeAddressType === "search" ? "Search address..." : "Enter address..."}
+                    </span>
+                  )}
+                </button>
+              </div>
+              <AddressPickerOverlay
+                open={beforeAddressMode === "search"}
+                onClose={() => setBeforeAddressMode(null)}
+                mode="search"
+                onConfirm={(result: AddressResult) => {
+                  setBeforeAddress(result.address);
+                  setBeforeLat(result.lat);
+                  setBeforeLng(result.lng);
+                }}
+                initialAddress={beforeAddress}
+                initialLat={beforeLat}
+                initialLng={beforeLng}
+                title={beforeRole === "driver" ? "Departing from" : "Pickup location"}
+              />
+              <ManualAddressOverlay
+                open={beforeAddressMode === "manual"}
+                onClose={() => setBeforeAddressMode(null)}
+                onConfirm={(address: string) => {
+                  setBeforeAddress(address);
+                  setBeforeLat(0);
+                  setBeforeLng(0);
+                }}
+                initialAddress={beforeAddress}
+                title={beforeRole === "driver" ? "Departing from" : "Pickup location"}
               />
             </div>
 
@@ -570,17 +606,62 @@ export function EventForm({
 
           <div className="space-y-6">
             <div className="space-y-2.5">
-              <Label htmlFor="after_address">
+              <Label>
                 {afterRole === "driver"
                   ? "Heading to"
                   : "Drop-off destination"}
               </Label>
-              <Input
-                id="after_address"
-                placeholder="Enter destination"
-                value={afterAddress}
-                onChange={(e) => setAfterAddress(e.target.value)}
-                required
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAfterAddressType((t) => (t === "search" ? "manual" : "search"))}
+                  className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border transition-all hover:bg-muted/50"
+                  aria-label={afterAddressType === "search" ? "Switch to manual entry" : "Switch to address search"}
+                >
+                  <HugeiconsIcon
+                    icon={afterAddressType === "search" ? MapsSearchIcon : TextIcon}
+                    className="size-4 text-muted-foreground"
+                    strokeWidth={1.5}
+                  />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAfterAddressMode(afterAddressType)}
+                  className="flex h-9 flex-1 items-center rounded-4xl border border-input bg-input/30 px-3 text-sm transition-colors hover:bg-input/50"
+                >
+                  {afterAddress ? (
+                    <span className="truncate">{afterAddress}</span>
+                  ) : (
+                    <span className="text-muted-foreground">
+                      {afterAddressType === "search" ? "Search address..." : "Enter address..."}
+                    </span>
+                  )}
+                </button>
+              </div>
+              <AddressPickerOverlay
+                open={afterAddressMode === "search"}
+                onClose={() => setAfterAddressMode(null)}
+                mode="search"
+                onConfirm={(result: AddressResult) => {
+                  setAfterAddress(result.address);
+                  setAfterLat(result.lat);
+                  setAfterLng(result.lng);
+                }}
+                initialAddress={afterAddress}
+                initialLat={afterLat}
+                initialLng={afterLng}
+                title={afterRole === "driver" ? "Heading to" : "Drop-off destination"}
+              />
+              <ManualAddressOverlay
+                open={afterAddressMode === "manual"}
+                onClose={() => setAfterAddressMode(null)}
+                onConfirm={(address: string) => {
+                  setAfterAddress(address);
+                  setAfterLat(0);
+                  setAfterLng(0);
+                }}
+                initialAddress={afterAddress}
+                title={afterRole === "driver" ? "Heading to" : "Drop-off destination"}
               />
             </div>
 

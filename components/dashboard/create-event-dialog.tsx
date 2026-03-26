@@ -4,7 +4,11 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Calendar } from "@/components/ui/calendar";
+import { TimeWheelPicker } from "@/components/ui/time-wheel-picker";
+import { DatePickerOverlay } from "@/components/ui/date-picker-overlay";
+import { AddressPickerOverlay } from "@/components/ui/address-picker-overlay";
+import type { AddressResult } from "@/components/ui/address-picker-overlay";
+import { ManualAddressOverlay } from "@/components/ui/manual-address-overlay";
 import {
   Dialog,
   DialogContent,
@@ -12,6 +16,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { MapsSearchIcon, TextIcon } from "@hugeicons/core-free-icons";
 
 type Step = 1 | 2 | 3;
 
@@ -58,8 +64,11 @@ export function CreateEventDialog({ open, onOpenChange }: CreateEventDialogProps
   const [hour, setHour] = useState("7");
   const [minute, setMinute] = useState("00");
   const [period, setPeriod] = useState<"AM" | "PM">("PM");
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [timeOpen, setTimeOpen] = useState(false);
+  const [locationType, setLocationType] = useState<"search" | "manual">("search");
+  const [locationMode, setLocationMode] = useState<"search" | "manual" | null>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
-  const locationInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   const resetForm = useCallback((): void => {
@@ -82,9 +91,6 @@ export function CreateEventDialog({ open, onOpenChange }: CreateEventDialogProps
   useEffect(() => {
     if (open && step === 1) {
       setTimeout(() => titleInputRef.current?.select(), 100);
-    }
-    if (open && step === 3) {
-      setTimeout(() => locationInputRef.current?.focus(), 100);
     }
   }, [open, step]);
 
@@ -198,63 +204,49 @@ export function CreateEventDialog({ open, onOpenChange }: CreateEventDialogProps
               <DialogTitle className="text-lg">When is it?</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <Calendar
-                mode="single"
-                selected={selectedDate}
-                onSelect={(date) => setSelectedDate(date ?? undefined)}
-                disabled={{ before: new Date() }}
-                className="rounded-xl border mx-auto"
-              />
-              {selectedDate && (
-                <p className="text-center text-sm text-muted-foreground">
-                  {dayLabel}, {formatDateDisplay(selectedDate).split(", ").slice(0, -1).join(", ").split(" ").slice(1).join(" ")}
-                </p>
-              )}
-              <div className="flex items-center justify-center gap-1.5">
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={2}
-                  placeholder="7"
-                  value={hour}
-                  onChange={(e) => {
-                    const v = e.target.value.replace(/\D/g, "").slice(0, 2);
-                    const n = parseInt(v, 10);
-                    if (v === "" || (n >= 1 && n <= 12)) setHour(v);
-                  }}
-                  className={cn(
-                    "h-11 w-12 rounded-xl border border-input bg-input/30 text-center text-base outline-none transition-colors",
-                    "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                  )}
-                />
-                <span className="text-lg text-muted-foreground font-medium">:</span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={2}
-                  placeholder="00"
-                  value={minute}
-                  onChange={(e) => {
-                    const v = e.target.value.replace(/\D/g, "").slice(0, 2);
-                    const n = parseInt(v, 10);
-                    if (v === "" || (n >= 0 && n <= 59)) setMinute(v);
-                  }}
-                  className={cn(
-                    "h-11 w-12 rounded-xl border border-input bg-input/30 text-center text-base outline-none transition-colors",
-                    "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                  )}
-                />
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Date</p>
                 <button
                   type="button"
-                  onClick={() => setPeriod((p) => (p === "AM" ? "PM" : "AM"))}
-                  className={cn(
-                    "h-11 rounded-xl border border-input bg-input/30 px-3 text-sm font-medium transition-colors",
-                    "hover:bg-input/50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 outline-none"
-                  )}
+                  onClick={() => setCalendarOpen(true)}
+                  className="flex h-9 w-full items-center rounded-4xl border border-input bg-input/30 px-3 text-sm transition-colors hover:bg-input/50"
                 >
-                  {period}
+                  {selectedDate ? (
+                    <span>{dayLabel}, {formatDateDisplay(selectedDate).split(", ").slice(0, -1).join(", ").split(" ").slice(1).join(" ")}</span>
+                  ) : (
+                    <span className="text-muted-foreground">Select date</span>
+                  )}
                 </button>
               </div>
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Time</p>
+                <button
+                  type="button"
+                  onClick={() => setTimeOpen(true)}
+                  className="flex h-9 w-full items-center rounded-4xl border border-input bg-input/30 px-3 text-sm tabular-nums transition-colors hover:bg-input/50"
+                >
+                  {hour || "–"}<span className="text-muted-foreground mx-0.5">:</span>{minute || "00"} {period}
+                </button>
+              </div>
+              <DatePickerOverlay
+                open={calendarOpen}
+                onClose={() => setCalendarOpen(false)}
+                selected={selectedDate}
+                onSelect={(date) => setSelectedDate(date)}
+                disabled={{ before: new Date() }}
+                title="Event date"
+              />
+              <TimeWheelPicker
+                open={timeOpen}
+                onClose={() => setTimeOpen(false)}
+                hour={hour || "7"}
+                minute={minute || "00"}
+                period={period}
+                onChangeHour={(h) => setHour(h)}
+                onChangeMinute={(m) => setMinute(m)}
+                onChangePeriod={(p) => setPeriod(p as "AM" | "PM")}
+                title="Event time"
+              />
             </div>
           </div>
         )}
@@ -265,12 +257,47 @@ export function CreateEventDialog({ open, onOpenChange }: CreateEventDialogProps
             <DialogHeader className="mb-6">
               <DialogTitle className="text-lg">Where is it?</DialogTitle>
             </DialogHeader>
-            <Input
-              ref={locationInputRef}
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="123 Church St, Atlanta, GA"
-              className="text-base h-12"
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setLocationType((t) => (t === "search" ? "manual" : "search"))}
+                className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border transition-all hover:bg-muted/50"
+                aria-label={locationType === "search" ? "Switch to manual entry" : "Switch to address search"}
+              >
+                <HugeiconsIcon
+                  icon={locationType === "search" ? MapsSearchIcon : TextIcon}
+                  className="size-4 text-muted-foreground"
+                  strokeWidth={1.5}
+                />
+              </button>
+              <button
+                type="button"
+                onClick={() => setLocationMode(locationType)}
+                className="flex h-9 flex-1 items-center rounded-4xl border border-input bg-input/30 px-3 text-sm text-left transition-colors hover:bg-input/50"
+              >
+                {location ? (
+                  <span className="truncate">{location}</span>
+                ) : (
+                  <span className="text-muted-foreground">
+                    {locationType === "search" ? "Search address..." : "Enter address..."}
+                  </span>
+                )}
+              </button>
+            </div>
+            <AddressPickerOverlay
+              open={locationMode === "search"}
+              onClose={() => setLocationMode(null)}
+              mode="search"
+              onConfirm={(result: AddressResult) => setLocation(result.address)}
+              initialAddress={location}
+              title="Event location"
+            />
+            <ManualAddressOverlay
+              open={locationMode === "manual"}
+              onClose={() => setLocationMode(null)}
+              onConfirm={(address: string) => setLocation(address)}
+              initialAddress={location}
+              title="Event location"
             />
           </div>
         )}

@@ -6,13 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-} from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
+import { TimeWheelPicker } from "@/components/ui/time-wheel-picker";
+import { DatePickerOverlay } from "@/components/ui/date-picker-overlay";
+import { AddressPickerOverlay } from "@/components/ui/address-picker-overlay";
+import type { AddressResult } from "@/components/ui/address-picker-overlay";
+import { ManualAddressOverlay } from "@/components/ui/manual-address-overlay";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { MapsSearchIcon, TextIcon } from "@hugeicons/core-free-icons";
 import type { Event } from "@/types/database";
 
 interface DraftEventEditorProps {
@@ -64,7 +64,10 @@ export function DraftEventEditor({ event }: DraftEventEditorProps): React.ReactE
   const [minute, setMinute] = useState(parsedTime.minute);
   const [period, setPeriod] = useState<"AM" | "PM">(parsedTime.period);
   const [location, setLocation] = useState(event.location);
+  const [locationType, setLocationType] = useState<"search" | "manual">("search");
+  const [locationMode, setLocationMode] = useState<"search" | "manual" | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [timeOpen, setTimeOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isActivating, setIsActivating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -176,93 +179,85 @@ export function DraftEventEditor({ event }: DraftEventEditorProps): React.ReactE
               <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Time</Label>
             </div>
             <div className="flex items-center gap-3">
-              <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-                <PopoverTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="flex-1 justify-start font-normal"
-                    />
-                  }
-                >
-                  {formatDateDisplay(selectedDate)}
-                </PopoverTrigger>
-                <PopoverContent
-                  className="w-auto p-0"
-                  align="start"
-                  side="bottom"
-                  sideOffset={4}
-                  positionMethod="fixed"
-                  collisionPadding={0}
-                  collisionAvoidance={{ side: "none", align: "none" }}
-                >
-                  <Calendar
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={(date) => {
-                      if (date) setSelectedDate(date);
-                      setCalendarOpen(false);
-                    }}
-                    disabled={{ before: new Date() }}
-                  />
-                </PopoverContent>
-              </Popover>
-              <div className="flex items-center gap-1">
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={2}
-                  placeholder="7"
-                  value={hour}
-                  onChange={(e) => {
-                    const v = e.target.value.replace(/\D/g, "").slice(0, 2);
-                    const n = parseInt(v, 10);
-                    if (v === "" || (n >= 1 && n <= 12)) setHour(v);
-                  }}
-                  className={cn(
-                    "h-9 w-10 rounded-lg border border-input bg-input/30 text-center text-sm outline-none transition-colors",
-                    "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                  )}
-                />
-                <span className="text-sm text-muted-foreground">:</span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={2}
-                  placeholder="00"
-                  value={minute}
-                  onChange={(e) => {
-                    const v = e.target.value.replace(/\D/g, "").slice(0, 2);
-                    const n = parseInt(v, 10);
-                    if (v === "" || (n >= 0 && n <= 59)) setMinute(v);
-                  }}
-                  className={cn(
-                    "h-9 w-10 rounded-lg border border-input bg-input/30 text-center text-sm outline-none transition-colors",
-                    "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                  )}
-                />
-                <button
-                  type="button"
-                  onClick={() => setPeriod((p) => (p === "AM" ? "PM" : "AM"))}
-                  className={cn(
-                    "h-9 rounded-lg border border-input bg-input/30 px-2.5 text-xs font-medium transition-colors",
-                    "hover:bg-input/50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 outline-none"
-                  )}
-                >
-                  {period}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setCalendarOpen(true)}
+                className="flex h-9 flex-1 items-center rounded-4xl border border-input bg-input/30 px-3 text-sm transition-colors hover:bg-input/50"
+              >
+                {formatDateDisplay(selectedDate)}
+              </button>
+              <button
+                type="button"
+                onClick={() => setTimeOpen(true)}
+                className="flex h-9 items-center gap-1 rounded-4xl border border-input bg-input/30 px-3 text-sm tabular-nums transition-colors hover:bg-input/50"
+              >
+                {hour || "–"}<span className="text-muted-foreground">:</span>{minute || "00"} {period}
+              </button>
             </div>
+            <DatePickerOverlay
+              open={calendarOpen}
+              onClose={() => setCalendarOpen(false)}
+              selected={selectedDate}
+              onSelect={(date) => setSelectedDate(date)}
+              disabled={{ before: new Date() }}
+              title="Event date"
+            />
+            <TimeWheelPicker
+              open={timeOpen}
+              onClose={() => setTimeOpen(false)}
+              hour={hour || "7"}
+              minute={minute || "00"}
+              period={period}
+              onChangeHour={(h) => setHour(h)}
+              onChangeMinute={(m) => setMinute(m)}
+              onChangePeriod={(p) => setPeriod(p as "AM" | "PM")}
+              title="Event time"
+            />
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="draft-location" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Location</Label>
-            <Input
-              id="draft-location"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="123 Church St, Atlanta, GA"
+            <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Location</Label>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setLocationType((t) => (t === "search" ? "manual" : "search"))}
+                className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border transition-all hover:bg-muted/50"
+                aria-label={locationType === "search" ? "Switch to manual entry" : "Switch to address search"}
+              >
+                <HugeiconsIcon
+                  icon={locationType === "search" ? MapsSearchIcon : TextIcon}
+                  className="size-4 text-muted-foreground"
+                  strokeWidth={1.5}
+                />
+              </button>
+              <button
+                type="button"
+                onClick={() => setLocationMode(locationType)}
+                className="flex h-9 flex-1 items-center rounded-4xl border border-input bg-input/30 px-3 text-sm text-left transition-colors hover:bg-input/50"
+              >
+                {location ? (
+                  <span className="truncate">{location}</span>
+                ) : (
+                  <span className="text-muted-foreground">
+                    {locationType === "search" ? "Search address..." : "Enter address..."}
+                  </span>
+                )}
+              </button>
+            </div>
+            <AddressPickerOverlay
+              open={locationMode === "search"}
+              onClose={() => setLocationMode(null)}
+              mode="search"
+              onConfirm={(result: AddressResult) => setLocation(result.address)}
+              initialAddress={location}
+              title="Event location"
+            />
+            <ManualAddressOverlay
+              open={locationMode === "manual"}
+              onClose={() => setLocationMode(null)}
+              onConfirm={(address: string) => setLocation(address)}
+              initialAddress={location}
+              title="Event location"
             />
           </div>
 
