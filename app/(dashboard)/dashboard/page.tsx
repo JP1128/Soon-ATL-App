@@ -37,7 +37,6 @@ export default async function DashboardPage(): Promise<React.ReactElement> {
 
   return (
     <div className="relative min-h-full">
-      <h1 className="mb-6 text-lg font-semibold">{isDraft ? "New Event" : hasActiveEvent ? "Active Event" : "Manage Events"}</h1>
 
       {isDraft ? (
         <DraftEventEditor event={activeEvent} />
@@ -48,17 +47,13 @@ export default async function DashboardPage(): Promise<React.ReactElement> {
           isActive
         />
       ) : (
-        <div className="mt-20 flex flex-col items-center gap-2 text-center">
+        <div className="flex flex-col items-center justify-center gap-4 text-center" style={{ minHeight: "calc(100vh - 12rem)" }}>
           <p className="text-sm text-muted-foreground">
             No active event right now.
           </p>
-          <p className="text-xs text-muted-foreground">
-            Tap + to create a new event.
-          </p>
+          <CreateEventFab />
         </div>
       )}
-
-      <CreateEventFab disabled={hasActiveEvent} />
     </div>
   );
 }

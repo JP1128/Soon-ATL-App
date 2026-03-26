@@ -25,7 +25,6 @@ export default async function DashboardProfilePage(): Promise<React.ReactElement
 
   return (
     <div>
-      <h1 className="mb-6 text-lg font-semibold">Settings</h1>
       <ProfileForm profile={profile} />
     </div>
   );

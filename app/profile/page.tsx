@@ -25,7 +25,6 @@ export default async function ProfilePage(): Promise<React.ReactElement> {
 
   return (
     <div className="w-full max-w-lg px-5 py-8">
-      <h1 className="mb-6 text-lg font-semibold">Settings</h1>
       <ProfileForm profile={profile} />
     </div>
   );

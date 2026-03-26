@@ -35,7 +35,6 @@ export default async function PastEventsPage(): Promise<React.ReactElement> {
 
   return (
     <div>
-      <h1 className="mb-6 text-lg font-semibold">Past Events</h1>
 
       {pastEvents.length > 0 ? (
         <div className="space-y-3">

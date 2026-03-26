@@ -59,8 +59,31 @@ export function BottomNav({
     router.refresh();
   }
 
+  const pageNames: Record<string, string> = {
+    "/": "",
+    "/profile": "Settings",
+    "/dashboard": "Manage Events",
+    "/dashboard/past-events": "Past Events",
+  };
+
+  function getPageName(): string {
+    // Exact match first
+    if (pageNames[pathname] !== undefined) return pageNames[pathname];
+    // Dynamic routes
+    if (pathname.startsWith("/dashboard/events/")) return "Event Details";
+    if (pathname.startsWith("/dashboard/profile")) return "Settings";
+    if (pathname.startsWith("/event/")) return "";
+    return "";
+  }
+
+  const pageName = getPageName();
+
   return (
-    <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2">
+    <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 flex-col items-center gap-1">
+      {pageName && (
+        <span className="text-xs text-muted-foreground">{pageName}</span>
+      )}
+      <div className="flex items-center gap-2">
       <div
         className="grid transition-[grid-template-columns,opacity] duration-300 ease-out"
         style={{
@@ -121,6 +144,7 @@ export function BottomNav({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      </div>
     </div>
   );
 }
