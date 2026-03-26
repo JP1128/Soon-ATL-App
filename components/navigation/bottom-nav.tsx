@@ -61,7 +61,7 @@ export function BottomNav({
 
   const pageNames: Record<string, string> = {
     "/": "",
-    "/profile": "Settings",
+    "/profile": "Profile",
     "/dashboard": "Manage Events",
     "/dashboard/past-events": "Past Events",
   };
@@ -71,7 +71,7 @@ export function BottomNav({
     if (pageNames[pathname] !== undefined) return pageNames[pathname];
     // Dynamic routes
     if (pathname.startsWith("/dashboard/events/")) return "Event Details";
-    if (pathname.startsWith("/dashboard/profile")) return "Settings";
+    if (pathname.startsWith("/dashboard/profile")) return "Profile";
     if (pathname.startsWith("/event/")) return "";
     return "";
   }
@@ -84,66 +84,63 @@ export function BottomNav({
         <span className="text-xs text-muted-foreground">{pageName}</span>
       )}
       <div className="flex items-center gap-2">
-      <div
-        className="grid transition-[grid-template-columns,opacity] duration-300 ease-out"
-        style={{
-          gridTemplateColumns: isMainPage ? "0fr" : "1fr",
-          opacity: isMainPage ? 0 : 1,
-        }}
-      >
-        <div className="overflow-hidden py-2">
-          <Button
-            variant="outline"
-            size="icon"
-            className="size-10 rounded-full bg-background shadow-lg"
-            onClick={() => router.back()}
-            tabIndex={isMainPage ? -1 : 0}
+      {isMainPage ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="outline"
+                size="icon"
+                className="size-10 rounded-full bg-background shadow-lg"
+              />
+            }
           >
-            <HugeiconsIcon icon={ArrowLeftIcon} strokeWidth={2} className="size-4" />
-            <span className="sr-only">Go back</span>
-          </Button>
-        </div>
-      </div>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <button
-              className={`inline-flex items-center gap-2.5 rounded-full border border-border/50 bg-background px-4 py-2 text-sm shadow-lg transition-all duration-200 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isNavigating ? "scale-95" : "scale-100"}`}
-            />
-          }
+            <HugeiconsIcon icon={Menu01Icon} strokeWidth={2} className="size-4" />
+            <span className="sr-only">Open menu</span>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="start" sideOffset={8}>
+            <DropdownMenuItem render={<Link href="/" />}>
+              Home
+            </DropdownMenuItem>
+            {isOrganizer && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem render={<Link href="/dashboard" />}>
+                  Manage Events
+                </DropdownMenuItem>
+                <DropdownMenuItem render={<Link href="/dashboard/past-events" />}>
+                  Past Events
+                </DropdownMenuItem>
+              </>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleSignOut}>
+              Sign Out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <Button
+          variant="outline"
+          size="icon"
+          className="size-10 rounded-full bg-background shadow-lg"
+          onClick={() => router.back()}
         >
-          <HugeiconsIcon icon={Menu01Icon} strokeWidth={2} className="size-4 text-muted-foreground" />
-          <Avatar size="sm">
-            <AvatarImage src={avatarUrl ?? undefined} alt={fullName} />
-            <AvatarFallback>{initials}</AvatarFallback>
-          </Avatar>
-          <span className="font-medium">{fullName}</span>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent side="top" align="center" sideOffset={8}>
-          <DropdownMenuItem render={<Link href="/" />}>
-            Home
-          </DropdownMenuItem>
-          {isOrganizer && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem render={<Link href="/dashboard" />}>
-                Manage Events
-              </DropdownMenuItem>
-              <DropdownMenuItem render={<Link href="/dashboard/past-events" />}>
-                Past Events
-              </DropdownMenuItem>
-            </>
-          )}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem render={<Link href="/profile" />}>
-            Settings
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={handleSignOut}>
-            Sign Out
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          <HugeiconsIcon icon={ArrowLeftIcon} strokeWidth={2} className="size-4" />
+          <span className="sr-only">Go back</span>
+        </Button>
+      )}
+
+      <Link
+        href="/profile"
+        className={`inline-flex items-center gap-2.5 rounded-full border border-border/50 bg-background px-4 py-2 text-sm shadow-lg transition-all duration-200 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isNavigating ? "scale-95" : "scale-100"}`}
+      >
+        <Avatar size="sm">
+          <AvatarImage src={avatarUrl ?? undefined} alt={fullName} />
+          <AvatarFallback>{initials}</AvatarFallback>
+        </Avatar>
+        <span className="font-medium">{fullName}</span>
+      </Link>
       </div>
     </div>
   );

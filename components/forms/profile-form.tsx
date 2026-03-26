@@ -83,7 +83,7 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
     .slice(0, 2);
 
   return (
-    <div>
+    <div className="rounded-2xl border p-5">
       <div className="mb-8 flex flex-col items-center gap-3">
         <Avatar size="lg">
           <AvatarImage src={profile.avatar_url ?? undefined} alt={fullName} />
@@ -155,13 +155,13 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
         </div>
 
         {error && <p className="text-sm text-destructive">{error}</p>}
-        {saved && (
-          <p className="text-sm text-green-600">Profile updated!</p>
-        )}
         <Button type="submit" disabled={isSaving} className="w-full rounded-xl">
           {isSaving ? "Saving…" : "Save Changes"}
         </Button>
       </form>
+      {saved && (
+        <p className="mt-3 text-center text-sm text-green-600">Profile updated!</p>
+      )}
     </div>
   );
 }

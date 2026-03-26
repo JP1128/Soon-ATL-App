@@ -1,34 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-} from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
-interface CreateEventDialogProps {
-  hasActiveEvent: boolean;
-}
+type Step = 1 | 2 | 3;
+
+const TOTAL_STEPS = 3;
 
 const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
 
 function formatDateDisplay(date: Date): string {
   return date.toLocaleDateString("en-US", {
-    month: "short",
+    weekday: "long",
+    month: "long",
     day: "numeric",
     year: "numeric",
   });
@@ -41,22 +35,65 @@ function formatDateValue(date: Date): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-export function CreateEventDialog({ hasActiveEvent }: CreateEventDialogProps): React.ReactElement {
-  const [open, setOpen] = useState(false);
+function getNextFriday(): Date {
+  const d = new Date();
+  const day = d.getDay();
+  const daysUntilFriday = (5 - day + 7) % 7 || 7;
+  d.setDate(d.getDate() + daysUntilFriday);
+  return d;
+}
+
+interface CreateEventDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export function CreateEventDialog({ open, onOpenChange }: CreateEventDialogProps): React.ReactElement {
+  const [step, setStep] = useState<Step>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState("Gethsemane");
   const [location, setLocation] = useState("");
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
-  const [hour, setHour] = useState("");
-  const [minute, setMinute] = useState("");
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(getNextFriday());
+  const [hour, setHour] = useState("7");
+  const [minute, setMinute] = useState("00");
   const [period, setPeriod] = useState<"AM" | "PM">("PM");
-  const [calendarOpen, setCalendarOpen] = useState(false);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const locationInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  const isFormComplete = title.trim() !== "" && selectedDate !== undefined && hour !== "" && location.trim() !== "";
+  const resetForm = useCallback((): void => {
+    setStep(1);
+    setTitle("Gethsemane");
+    setLocation("");
+    setSelectedDate(getNextFriday());
+    setHour("7");
+    setMinute("00");
+    setPeriod("PM");
+    setError(null);
+  }, []);
 
-  const dayLabel = selectedDate ? DAY_LABELS[selectedDate.getDay()] : null;
+  useEffect(() => {
+    if (!open) {
+      resetForm();
+    }
+  }, [open, resetForm]);
+
+  useEffect(() => {
+    if (open && step === 1) {
+      setTimeout(() => titleInputRef.current?.select(), 100);
+    }
+    if (open && step === 3) {
+      setTimeout(() => locationInputRef.current?.focus(), 100);
+    }
+  }, [open, step]);
+
+  function canAdvance(): boolean {
+    if (step === 1) return title.trim() !== "";
+    if (step === 2) return selectedDate !== undefined && hour !== "";
+    if (step === 3) return location.trim() !== "";
+    return false;
+  }
 
   function getTimeValue(): string | null {
     if (!hour) return null;
@@ -67,23 +104,41 @@ export function CreateEventDialog({ hasActiveEvent }: CreateEventDialogProps): R
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
   }
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>): Promise<void> {
-    e.preventDefault();
+  function handleNext(): void {
+    if (!canAdvance()) return;
+    if (step < TOTAL_STEPS) {
+      setStep((s) => (s + 1) as Step);
+    }
+  }
+
+  function handleBack(): void {
+    if (step > 1) {
+      setStep((s) => (s - 1) as Step);
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent): void {
+    if (e.key === "Enter" && canAdvance()) {
+      e.preventDefault();
+      if (step < TOTAL_STEPS) {
+        handleNext();
+      } else {
+        void handleSubmit();
+      }
+    }
+  }
+
+  async function handleSubmit(): Promise<void> {
+    if (!canAdvance()) return;
     setIsSubmitting(true);
     setError(null);
-
-    if (!selectedDate) {
-      setError("Please select a date");
-      setIsSubmitting(false);
-      return;
-    }
 
     const res = await fetch("/api/events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title,
-        event_date: formatDateValue(selectedDate),
+        event_date: selectedDate ? formatDateValue(selectedDate) : undefined,
         event_time: getTimeValue(),
         location,
       }),
@@ -96,87 +151,66 @@ export function CreateEventDialog({ hasActiveEvent }: CreateEventDialogProps): R
       return;
     }
 
-    setOpen(false);
     setIsSubmitting(false);
-    setTitle("Gethsemane");
-    setLocation("");
-    setSelectedDate(undefined);
-    setHour("");
-    setMinute("");
-    setPeriod("PM");
-    setCalendarOpen(false);
+    onOpenChange(false);
     router.refresh();
   }
 
+  const dayLabel = selectedDate ? DAY_LABELS[selectedDate.getDay()] : null;
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={<Button disabled={hasActiveEvent} />}
-      >
-        New Event
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Create Event</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="title">Title</Label>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="gap-0">
+        {/* Progress dots */}
+        <div className="flex items-center justify-center gap-1.5 mb-5">
+          {[1, 2, 3].map((s) => (
+            <div
+              key={s}
+              className={cn(
+                "h-1.5 rounded-full transition-all duration-300",
+                s === step ? "w-6 bg-primary" : s < step ? "w-1.5 bg-primary/60" : "w-1.5 bg-muted-foreground/20"
+              )}
+            />
+          ))}
+        </div>
+
+        {/* Step 1: Title */}
+        {step === 1 && (
+          <div onKeyDown={handleKeyDown}>
+            <DialogHeader className="mb-6">
+              <DialogTitle className="text-lg">What&apos;s the event called?</DialogTitle>
+            </DialogHeader>
             <Input
-              id="title"
+              ref={titleInputRef}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Gethsemane"
+              placeholder="Event name"
+              className="text-base h-12"
+              autoFocus
             />
           </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-baseline gap-1.5">
-                <Label>Date</Label>
-                {dayLabel && (
-                  <span className="text-xs text-muted-foreground">{dayLabel}</span>
-                )}
-              </div>
-              <div className="flex items-baseline gap-2">
-                <Label>Time</Label>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-                <PopoverTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="flex-1 justify-start font-normal"
-                    />
-                  }
-                >
-                  {selectedDate ? formatDateDisplay(selectedDate) : (
-                    <span className="text-muted-foreground">Pick a date</span>
-                  )}
-                </PopoverTrigger>
-                <PopoverContent
-                  className="w-auto p-0"
-                  align="start"
-                  side="bottom"
-                  sideOffset={4}
-                  positionMethod="fixed"
-                  collisionPadding={0}
-                  collisionAvoidance={{ side: "none", align: "none" }}
-                >
-                  <Calendar
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={(date) => {
-                      setSelectedDate(date ?? undefined);
-                      setCalendarOpen(false);
-                    }}
-                    disabled={{ before: new Date() }}
-                  />
-                </PopoverContent>
-              </Popover>
-              <div className="flex items-center gap-1">
+        )}
+
+        {/* Step 2: Date & Time */}
+        {step === 2 && (
+          <div onKeyDown={handleKeyDown}>
+            <DialogHeader className="mb-6">
+              <DialogTitle className="text-lg">When is it?</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={(date) => setSelectedDate(date ?? undefined)}
+                disabled={{ before: new Date() }}
+                className="rounded-xl border mx-auto"
+              />
+              {selectedDate && (
+                <p className="text-center text-sm text-muted-foreground">
+                  {dayLabel}, {formatDateDisplay(selectedDate).split(", ").slice(0, -1).join(", ").split(" ").slice(1).join(" ")}
+                </p>
+              )}
+              <div className="flex items-center justify-center gap-1.5">
                 <input
                   type="text"
                   inputMode="numeric"
@@ -189,11 +223,11 @@ export function CreateEventDialog({ hasActiveEvent }: CreateEventDialogProps): R
                     if (v === "" || (n >= 1 && n <= 12)) setHour(v);
                   }}
                   className={cn(
-                    "h-9 w-10 rounded-xl border border-input bg-input/30 text-center text-sm outline-none transition-colors",
+                    "h-11 w-12 rounded-xl border border-input bg-input/30 text-center text-base outline-none transition-colors",
                     "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                   )}
                 />
-                <span className="text-sm text-muted-foreground">:</span>
+                <span className="text-lg text-muted-foreground font-medium">:</span>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -206,7 +240,7 @@ export function CreateEventDialog({ hasActiveEvent }: CreateEventDialogProps): R
                     if (v === "" || (n >= 0 && n <= 59)) setMinute(v);
                   }}
                   className={cn(
-                    "h-9 w-10 rounded-xl border border-input bg-input/30 text-center text-sm outline-none transition-colors",
+                    "h-11 w-12 rounded-xl border border-input bg-input/30 text-center text-base outline-none transition-colors",
                     "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                   )}
                 />
@@ -214,7 +248,7 @@ export function CreateEventDialog({ hasActiveEvent }: CreateEventDialogProps): R
                   type="button"
                   onClick={() => setPeriod((p) => (p === "AM" ? "PM" : "AM"))}
                   className={cn(
-                    "h-9 rounded-xl border border-input bg-input/30 px-2.5 text-xs font-medium transition-colors",
+                    "h-11 rounded-xl border border-input bg-input/30 px-3 text-sm font-medium transition-colors",
                     "hover:bg-input/50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 outline-none"
                   )}
                 >
@@ -223,20 +257,60 @@ export function CreateEventDialog({ hasActiveEvent }: CreateEventDialogProps): R
               </div>
             </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="location">Location</Label>
+        )}
+
+        {/* Step 3: Location */}
+        {step === 3 && (
+          <div onKeyDown={handleKeyDown}>
+            <DialogHeader className="mb-6">
+              <DialogTitle className="text-lg">Where is it?</DialogTitle>
+            </DialogHeader>
             <Input
-              id="location"
+              ref={locationInputRef}
               value={location}
               onChange={(e) => setLocation(e.target.value)}
               placeholder="123 Church St, Atlanta, GA"
+              className="text-base h-12"
             />
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" disabled={!isFormComplete || isSubmitting} className="w-full">
-            {isSubmitting ? "Creating…" : "Create Event"}
-          </Button>
-        </form>
+        )}
+
+        {/* Error */}
+        {error && <p className="text-sm text-destructive mt-4">{error}</p>}
+
+        {/* Navigation buttons */}
+        <div className="flex items-center gap-3 mt-6">
+          {step > 1 && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={handleBack}
+              className="px-4"
+            >
+              Back
+            </Button>
+          )}
+          <div className="flex-1" />
+          {step < TOTAL_STEPS ? (
+            <Button
+              type="button"
+              onClick={handleNext}
+              disabled={!canAdvance()}
+              className="px-6"
+            >
+              Continue
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              onClick={() => void handleSubmit()}
+              disabled={!canAdvance() || isSubmitting}
+              className="px-6"
+            >
+              {isSubmitting ? "Creating…" : "Create Event"}
+            </Button>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

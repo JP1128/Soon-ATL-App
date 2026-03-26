@@ -38,14 +38,8 @@ export default async function DashboardPage(): Promise<React.ReactElement> {
   return (
     <div className="relative min-h-full">
 
-      {isDraft ? (
+      {activeEvent ? (
         <DraftEventEditor event={activeEvent} />
-      ) : activeEvent ? (
-        <EventCard
-          event={activeEvent}
-          responseCount={responseCount}
-          isActive
-        />
       ) : (
         <div className="flex flex-col items-center justify-center gap-4 text-center" style={{ minHeight: "calc(100vh - 12rem)" }}>
           <p className="text-sm text-muted-foreground">

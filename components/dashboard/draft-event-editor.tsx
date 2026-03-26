@@ -115,14 +115,14 @@ export function DraftEventEditor({ event }: DraftEventEditorProps): React.ReactE
 
   async function handleActivate(): Promise<void> {
     if (!title.trim() || !location.trim()) {
-      setError("Title and location are required to activate.");
+      setError("Title and location are required to send out.");
       return;
     }
 
     setIsActivating(true);
     setError(null);
 
-    // Save first, then activate
+    // Save and send out
     const saveRes = await fetch(`/api/events/${event.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -131,7 +131,7 @@ export function DraftEventEditor({ event }: DraftEventEditorProps): React.ReactE
 
     if (!saveRes.ok) {
       const data = await saveRes.json();
-      setError(data.error || "Failed to activate");
+      setError(data.error || "Failed to send out");
       setIsActivating(false);
       return;
     }
@@ -150,150 +150,152 @@ export function DraftEventEditor({ event }: DraftEventEditorProps): React.ReactE
   const canActivate = title.trim() !== "" && location.trim() !== "";
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col items-center justify-center" style={{ minHeight: "calc(100vh - 12rem)" }}>
       {lastSaved && (
-        <p className="text-xs text-muted-foreground">Last saved {lastSaved}</p>
+        <p className="w-full max-w-md text-xs text-muted-foreground text-right mb-2 px-1">Last saved {lastSaved}</p>
       )}
+      <div className="w-full max-w-md rounded-2xl border p-5 space-y-6">
 
-      <div className="space-y-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="draft-title" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Title</Label>
-          <Input
-            id="draft-title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Gethsemane"
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-baseline gap-1.5">
-              <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Date</Label>
-              <span className="text-xs text-muted-foreground">{dayLabel}</span>
-            </div>
-            <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Time</Label>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="draft-title" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Title</Label>
+            <Input
+              id="draft-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Gethsemane"
+            />
           </div>
-          <div className="flex items-center gap-3">
-            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-              <PopoverTrigger
-                render={
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1 justify-start font-normal"
+
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-baseline gap-1.5">
+                <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Date</Label>
+                <span className="text-xs text-muted-foreground">{dayLabel}</span>
+              </div>
+              <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Time</Label>
+            </div>
+            <div className="flex items-center gap-3">
+              <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                <PopoverTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1 justify-start font-normal"
+                    />
+                  }
+                >
+                  {formatDateDisplay(selectedDate)}
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-auto p-0"
+                  align="start"
+                  side="bottom"
+                  sideOffset={4}
+                  positionMethod="fixed"
+                  collisionPadding={0}
+                  collisionAvoidance={{ side: "none", align: "none" }}
+                >
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(date) => {
+                      if (date) setSelectedDate(date);
+                      setCalendarOpen(false);
+                    }}
+                    disabled={{ before: new Date() }}
                   />
-                }
-              >
-                {formatDateDisplay(selectedDate)}
-              </PopoverTrigger>
-              <PopoverContent
-                className="w-auto p-0"
-                align="start"
-                side="bottom"
-                sideOffset={4}
-                positionMethod="fixed"
-                collisionPadding={0}
-                collisionAvoidance={{ side: "none", align: "none" }}
-              >
-                <Calendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={(date) => {
-                    if (date) setSelectedDate(date);
-                    setCalendarOpen(false);
+                </PopoverContent>
+              </Popover>
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={2}
+                  placeholder="7"
+                  value={hour}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, "").slice(0, 2);
+                    const n = parseInt(v, 10);
+                    if (v === "" || (n >= 1 && n <= 12)) setHour(v);
                   }}
-                  disabled={{ before: new Date() }}
+                  className={cn(
+                    "h-9 w-10 rounded-lg border border-input bg-input/30 text-center text-sm outline-none transition-colors",
+                    "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  )}
                 />
-              </PopoverContent>
-            </Popover>
-            <div className="flex items-center gap-1">
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={2}
-                placeholder="7"
-                value={hour}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/\D/g, "").slice(0, 2);
-                  const n = parseInt(v, 10);
-                  if (v === "" || (n >= 1 && n <= 12)) setHour(v);
-                }}
-                className={cn(
-                  "h-9 w-10 rounded-lg border border-input bg-input/30 text-center text-sm outline-none transition-colors",
-                  "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                )}
-              />
-              <span className="text-sm text-muted-foreground">:</span>
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={2}
-                placeholder="00"
-                value={minute}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/\D/g, "").slice(0, 2);
-                  const n = parseInt(v, 10);
-                  if (v === "" || (n >= 0 && n <= 59)) setMinute(v);
-                }}
-                className={cn(
-                  "h-9 w-10 rounded-lg border border-input bg-input/30 text-center text-sm outline-none transition-colors",
-                  "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                )}
-              />
-              <button
-                type="button"
-                onClick={() => setPeriod((p) => (p === "AM" ? "PM" : "AM"))}
-                className={cn(
-                  "h-9 rounded-lg border border-input bg-input/30 px-2.5 text-xs font-medium transition-colors",
-                  "hover:bg-input/50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 outline-none"
-                )}
-              >
-                {period}
-              </button>
+                <span className="text-sm text-muted-foreground">:</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={2}
+                  placeholder="00"
+                  value={minute}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, "").slice(0, 2);
+                    const n = parseInt(v, 10);
+                    if (v === "" || (n >= 0 && n <= 59)) setMinute(v);
+                  }}
+                  className={cn(
+                    "h-9 w-10 rounded-lg border border-input bg-input/30 text-center text-sm outline-none transition-colors",
+                    "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  )}
+                />
+                <button
+                  type="button"
+                  onClick={() => setPeriod((p) => (p === "AM" ? "PM" : "AM"))}
+                  className={cn(
+                    "h-9 rounded-lg border border-input bg-input/30 px-2.5 text-xs font-medium transition-colors",
+                    "hover:bg-input/50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 outline-none"
+                  )}
+                >
+                  {period}
+                </button>
+              </div>
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="draft-location" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Location</Label>
+            <Input
+              id="draft-location"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="123 Church St, Atlanta, GA"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="draft-description" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Description</Label>
+            <Textarea
+              id="draft-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Notes about the event…"
+              rows={3}
+            />
           </div>
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="draft-location" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Location</Label>
-          <Input
-            id="draft-location"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            placeholder="123 Church St, Atlanta, GA"
-          />
+        {error && <p className="text-sm text-destructive">{error}</p>}
+
+        <div className="flex gap-3">
+          <Button onClick={handleSave} variant="outline" disabled={isSaving} className="flex-1 rounded-xl">
+            {isSaving ? "Saving…" : "Save"}
+          </Button>
+          <Button onClick={handleActivate} disabled={!canActivate || isActivating || event.status === "open"} className="flex-1 rounded-xl">
+            {isActivating ? "Sending…" : event.status === "open" ? "Sent" : "Send out"}
+          </Button>
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="draft-description" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Description</Label>
-          <Textarea
-            id="draft-description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Notes about the event…"
-            rows={3}
-          />
-        </div>
+        <button
+          onClick={handleDelete}
+          className="block w-full text-center text-xs text-muted-foreground underline-offset-4 hover:text-destructive hover:underline"
+        >
+          Delete draft
+        </button>
       </div>
-
-      {error && <p className="text-sm text-destructive">{error}</p>}
-
-      <div className="flex gap-3">
-        <Button onClick={handleSave} variant="outline" disabled={isSaving} className="flex-1 rounded-xl">
-          {isSaving ? "Saving…" : "Save"}
-        </Button>
-        <Button onClick={handleActivate} disabled={!canActivate || isActivating} className="flex-1 rounded-xl">
-          {isActivating ? "Activating…" : "Activate"}
-        </Button>
-      </div>
-
-      <button
-        onClick={handleDelete}
-        className="block w-full text-center text-xs text-muted-foreground underline-offset-4 hover:text-destructive hover:underline"
-      >
-        Delete draft
-      </button>
     </div>
   );
 }

@@ -84,7 +84,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
   }
 
   const statusConfig: Record<UserEventStatus, { label: string; variant: "default" | "secondary" | "outline" }> = {
-    "needs-response": { label: "RSVP needed", variant: "secondary" },
+    "needs-response": { label: "Response needed", variant: "secondary" },
     submitted: { label: "Response submitted", variant: "outline" },
     "ride-assigned": { label: "Ride assigned", variant: "default" },
   };
