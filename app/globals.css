@@ -48,6 +48,19 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+@keyframes fluid-wave {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-fluid-wave {
+  animation: fluid-wave 3s linear infinite;
+}
+
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);

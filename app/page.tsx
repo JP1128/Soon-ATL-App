@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { ActiveEventCard } from "@/components/active-event-card";
 import type { Event, Profile, Response, Carpool, CarpoolRider } from "@/types/database";
 
 type UserEventStatus = "needs-response" | "submitted" | "ride-assigned";
@@ -83,12 +82,6 @@ export default async function HomePage(): Promise<React.ReactElement> {
     }
   }
 
-  const statusConfig: Record<UserEventStatus, { label: string; variant: "default" | "secondary" | "outline" }> = {
-    "needs-response": { label: "Response needed", variant: "secondary" },
-    submitted: { label: "Response submitted", variant: "outline" },
-    "ride-assigned": { label: "Ride assigned", variant: "default" },
-  };
-
   return (
     <div className="flex w-full max-w-lg flex-col items-center px-6">
       {/* Brand */}
@@ -107,26 +100,16 @@ export default async function HomePage(): Promise<React.ReactElement> {
           </a>
         )}
         {user && activeEvent && (
-          <Link
-            href={`/event/${activeEvent.id}`}
-            className="w-full rounded-2xl border p-5 text-left transition-colors hover:bg-muted/50"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-semibold">{activeEvent.title}</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {new Date(activeEvent.event_date + "T00:00:00").toLocaleDateString("en-US", {
-                    weekday: "short",
-                    month: "short",
-                    day: "numeric",
-                  })} · {activeEvent.location}
-                </p>
-              </div>
-              <Badge variant={statusConfig[userStatus].variant} className="shrink-0">
-                {statusConfig[userStatus].label}
-              </Badge>
-            </div>
-          </Link>
+          <ActiveEventCard
+            eventId={activeEvent.id}
+            title={activeEvent.title}
+            subtitle={`${new Date(activeEvent.event_date + "T00:00:00").toLocaleDateString("en-US", {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+            })}${activeEvent.event_time ? ` · ${new Date(`1970-01-01T${activeEvent.event_time}`).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : ""} · ${activeEvent.location}`}
+            status={userStatus}
+          />
         )}
         {user && !activeEvent && (
           <p className="text-sm text-muted-foreground">No open events right now.</p>
