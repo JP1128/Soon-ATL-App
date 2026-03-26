@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
-import { PageHeader } from "@/components/dashboard/page-header";
 import { Badge } from "@/components/ui/badge";
 import type { EventStatus } from "@/types/database";
 
@@ -26,16 +25,6 @@ export default async function EventDetailPage({
 
   if (!user) {
     redirect("/login");
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  if (profile?.role !== "organizer") {
-    redirect("/");
   }
 
   const { data: event } = await supabase
@@ -102,9 +91,10 @@ export default async function EventDetailPage({
 
   return (
     <div>
-      <PageHeader title={event.title}>
+      <div className="mb-6 flex items-center gap-3">
+        <h1 className="flex-1 text-lg font-semibold">{event.title}</h1>
         <Badge>{STATUS_LABELS[status]}</Badge>
-      </PageHeader>
+      </div>
 
       <div className="mb-8 space-y-1">
         <p className="text-sm text-muted-foreground">

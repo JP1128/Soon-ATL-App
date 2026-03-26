@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Figtree } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import { BottomNavServer } from "@/components/navigation/bottom-nav-server";
 
 const figtree = Figtree({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -39,7 +40,8 @@ export default function RootLayout({
       )}
     >
       <body className="flex h-full flex-col overflow-hidden">
-        <main className="flex flex-1 flex-col items-center justify-center overflow-y-auto">{children}</main>
+        <main className="flex flex-1 flex-col items-center justify-center overflow-y-auto pb-20">{children}</main>
+        <BottomNavServer />
       </body>
     </html>
   );

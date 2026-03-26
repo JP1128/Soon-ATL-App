@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { PageHeader } from "@/components/dashboard/page-header";
 import { DraftEventEditor } from "@/components/dashboard/draft-event-editor";
 import { CreateEventFab } from "@/components/dashboard/create-event-fab";
 import { EventCard } from "@/components/dashboard/event-card";
@@ -38,7 +37,7 @@ export default async function DashboardPage(): Promise<React.ReactElement> {
 
   return (
     <div className="relative min-h-full">
-      <PageHeader title={isDraft ? "New Event" : hasActiveEvent ? "Active Event" : "Home"} />
+      <h1 className="mb-6 text-lg font-semibold">{isDraft ? "New Event" : hasActiveEvent ? "Active Event" : "Manage Events"}</h1>
 
       {isDraft ? (
         <DraftEventEditor event={activeEvent} />

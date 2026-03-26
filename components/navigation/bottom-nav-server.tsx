@@ -1,16 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
-import { ProfileForm } from "@/components/forms/profile-form";
+import { BottomNav } from "./bottom-nav";
 import type { Profile } from "@/types/database";
 
-export default async function DashboardProfilePage(): Promise<React.ReactElement> {
+export async function BottomNavServer(): Promise<React.ReactElement | null> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/");
+    return null;
   }
 
   const { data: profile } = await supabase
@@ -20,13 +19,14 @@ export default async function DashboardProfilePage(): Promise<React.ReactElement
     .single() as { data: Profile | null };
 
   if (!profile) {
-    redirect("/");
+    return null;
   }
 
   return (
-    <div>
-      <h1 className="mb-6 text-lg font-semibold">Settings</h1>
-      <ProfileForm profile={profile} />
-    </div>
+    <BottomNav
+      fullName={profile.full_name}
+      avatarUrl={profile.avatar_url}
+      isOrganizer={profile.role === "organizer"}
+    />
   );
 }

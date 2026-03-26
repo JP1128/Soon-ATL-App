@@ -40,30 +40,36 @@ This is a carpool coordination web app for a college student organization. Every
 
 ### File & Folder Structure
 ```
-src/
-├── app/                    # Next.js App Router pages & layouts
-│   ├── (auth)/             # Auth-related routes (login, callback)
-│   ├── (dashboard)/        # Organizer dashboard routes
-│   ├── event/[id]/         # Dynamic event form page
-│   ├── api/                # API routes
-│   │   ├── events/         # Event CRUD
-│   │   ├── responses/      # Form response handling
-│   │   ├── match/          # Carpool matching algorithm
-│   │   └── notifications/  # Push notification endpoints
-│   ├── layout.tsx
-│   └── page.tsx
-├── components/
-│   ├── ui/                 # shadcn/ui components
-│   ├── forms/              # Form-related components
-│   ├── maps/               # Google Maps components
-│   └── dashboard/          # Organizer dashboard components
-├── lib/
-│   ├── supabase/           # Supabase client setup (browser + server)
-│   ├── google-maps/        # Maps API utilities
-│   ├── matching/           # Carpool matching algorithm
-│   └── utils.ts            # General utilities
-├── types/                  # Shared TypeScript types
-└── hooks/                  # Custom React hooks
+app/                        # Next.js App Router pages & layouts
+├── (dashboard)/            # Event management routes (auth-gated, no role gate)
+│   └── dashboard/
+│       ├── events/[id]/    # Event detail/management
+│       ├── past-events/    # Past events archive
+│       └── profile/        # Profile settings (dashboard copy)
+├── auth/callback/          # Google OAuth callback
+├── event/[id]/             # Public event form page
+├── profile/                # Profile & settings page
+├── api/                    # API routes
+│   ├── auth/google/        # OAuth initiation
+│   ├── events/             # Event CRUD
+│   ├── responses/          # Form response handling
+│   ├── match/              # Carpool matching algorithm
+│   └── notifications/      # Push notification endpoints
+├── layout.tsx              # Root layout — includes BottomNavServer
+└── page.tsx                # Home / landing page
+components/
+├── ui/                     # shadcn/ui components
+├── forms/                  # Form-related components
+├── navigation/             # BottomNav (bottom-nav.tsx, bottom-nav-server.tsx)
+├── maps/                   # Google Maps components
+└── dashboard/              # Event management components
+lib/
+├── supabase/               # Supabase client setup (browser + server)
+├── google-maps/            # Maps API utilities
+├── matching/               # Carpool matching algorithm
+└── utils.ts                # General utilities
+types/                      # Shared TypeScript types
+hooks/                      # Custom React hooks
 ```
 
 ### Naming Conventions
@@ -120,6 +126,18 @@ carpools: id (uuid, PK), event_id (references events), driver_id (references pro
 -- carpool_riders (riders assigned to carpools)
 carpool_riders: id (uuid, PK), carpool_id (references carpools), rider_id (references profiles), pickup_order (integer)
 ```
+
+## Navigation & Design System
+
+- **No separate organizer vs member views** — all users share the same routes and layouts. Organizers simply see additional navigation items in the bottom nav menu.
+- **Bottom nav chip**: The primary navigation element is a profile chip (`BottomNav`) fixed at the bottom center of the screen. Tapping it opens a dropdown menu (upward) with navigation links.
+  - All users see: Home, Profile & Settings, Sign Out
+  - Organizers additionally see: Manage Events, Past Events
+- **Back button**: When the user is not on the home page (`/`), a back button appears to the left of the profile chip (uses `router.back()`).
+- **BottomNavServer** (server component) fetches auth/profile data and renders `BottomNav`. It returns `null` for unauthenticated users. It is rendered in the root `layout.tsx`.
+- **No top navbar or sidebar** — all navigation flows through the bottom nav chip.
+- **Dashboard routes** (`/dashboard/*`) are auth-gated but **not role-gated** — any authenticated user can access them. The `BottomNav` controls visibility of the links to these routes based on role.
+- Pages use simple `<h1>` headings instead of a `PageHeader` component.
 
 ## Key Business Rules
 

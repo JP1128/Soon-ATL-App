@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { PageHeader } from "@/components/dashboard/page-header";
 import { EventCard } from "@/components/dashboard/event-card";
 import type { Event } from "@/types/database";
 
@@ -36,7 +35,7 @@ export default async function PastEventsPage(): Promise<React.ReactElement> {
 
   return (
     <div>
-      <PageHeader title="Past Events" />
+      <h1 className="mb-6 text-lg font-semibold">Past Events</h1>
 
       {pastEvents.length > 0 ? (
         <div className="space-y-3">

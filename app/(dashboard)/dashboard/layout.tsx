@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { DashboardProvider } from "@/components/dashboard/dashboard-context";
 import type { Profile } from "@/types/database";
 
 export default async function DashboardLayout({
@@ -23,22 +22,17 @@ export default async function DashboardLayout({
     .eq("id", user.id)
     .single() as { data: Profile | null };
 
-  if (profile?.role !== "organizer") {
+  if (!profile) {
     redirect("/");
   }
 
   return (
-    <DashboardProvider
-      fullName={profile.full_name}
-      avatarUrl={profile.avatar_url}
-    >
-      <div className="flex h-full w-full flex-col">
-        <div className="flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-lg px-5 pt-6 pb-24">
-            {children}
-          </div>
+    <div className="flex h-full w-full flex-col">
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-lg px-5 pt-6 pb-24">
+          {children}
         </div>
       </div>
-    </DashboardProvider>
+    </div>
   );
 }
