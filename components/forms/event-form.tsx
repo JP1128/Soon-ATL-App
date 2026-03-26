@@ -1,165 +1,240 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
-import type { ResponseRole, PreferenceType } from "@/types/database";
-
-interface Member {
-  id: string;
-  full_name: string;
-  email: string;
-}
-
-interface ExistingPreference {
-  id: string;
-  target_user_id: string;
-  type: PreferenceType;
-}
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  Car01Icon,
+  LocationUser01Icon,
+  Coffee01Icon,
+  CheckmarkCircle02Icon,
+} from "@hugeicons/core-free-icons";
+import type { LegRole } from "@/types/database";
 
 interface ExistingResponse {
   id: string;
-  role: ResponseRole;
+  role: string;
+  before_role: LegRole | null;
+  after_role: LegRole | null;
   pickup_address: string | null;
-  pickup_lat: number | null;
-  pickup_lng: number | null;
-  dropoff_address: string | null;
-  dropoff_lat: number | null;
-  dropoff_lng: number | null;
-  needs_return_ride: boolean;
   return_address: string | null;
-  return_lat: number | null;
-  return_lng: number | null;
+  departure_time: string | null;
   available_seats: number | null;
-  preferences: ExistingPreference[];
+  needs_return_ride: boolean;
+  note: string | null;
 }
 
 interface EventFormProps {
   eventId: string;
-  members: Member[];
   existingResponse: ExistingResponse | null;
-  defaultRole?: string | null;
 }
 
-interface PreferenceEntry {
-  target_user_id: string;
-  type: PreferenceType;
+function parseTime(time: string): { hour: string; minute: string; period: string } {
+  if (!time) return { hour: "", minute: "", period: "PM" };
+  const [h, m] = time.split(":");
+  const hour24 = parseInt(h, 10);
+  const period = hour24 >= 12 ? "PM" : "AM";
+  const hour12 = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
+  return { hour: hour12.toString(), minute: m, period };
 }
 
-const ROLE_OPTIONS: { value: ResponseRole; label: string; description: string }[] = [
-  { value: "driver", label: "Driver", description: "I can drive and give rides" },
-  { value: "rider", label: "Rider", description: "I need a ride" },
-  { value: "attending", label: "Attending Only", description: "I'll get there on my own" },
-];
+function toTime24(hour: string, minute: string, period: string): string {
+  if (!hour || !minute) return "";
+  let h = parseInt(hour, 10);
+  if (period === "AM" && h === 12) h = 0;
+  else if (period === "PM" && h !== 12) h += 12;
+  return `${h.toString().padStart(2, "0")}:${minute}`;
+}
 
 export function EventForm({
   eventId,
-  members,
   existingResponse,
-  defaultRole,
 }: EventFormProps): React.ReactElement {
-  const router = useRouter();
-  const [role, setRole] = useState<ResponseRole | null>(
-    existingResponse?.role ?? (defaultRole as ResponseRole | null) ?? null
-  );
-  const [pickupAddress, setPickupAddress] = useState(
+  const initialBeforeRole: LegRole | null =
+    existingResponse?.before_role ??
+    (existingResponse?.role === "driver" || existingResponse?.role === "rider"
+      ? (existingResponse.role as LegRole)
+      : null);
+  const initialAfterRole: LegRole | null =
+    existingResponse?.after_role ??
+    (existingResponse?.needs_return_ride && existingResponse?.role === "driver"
+      ? "driver"
+      : existingResponse?.needs_return_ride && existingResponse?.role === "rider"
+        ? "rider"
+        : null);
+
+  const initialTime = parseTime(existingResponse?.departure_time ?? "");
+
+  const [step, setStep] = useState(0);
+  const [beforeRole, setBeforeRole] = useState<LegRole | null>(initialBeforeRole);
+  const [afterRole, setAfterRole] = useState<LegRole | null>(initialAfterRole);
+
+  const [beforeAddress, setBeforeAddress] = useState(
     existingResponse?.pickup_address ?? ""
   );
+  const [timeHour, setTimeHour] = useState(initialTime.hour);
+  const [timeMinute, setTimeMinute] = useState(initialTime.minute);
+  const [timePeriod, setTimePeriod] = useState(initialTime.period);
   const [availableSeats, setAvailableSeats] = useState(
     existingResponse?.available_seats?.toString() ?? "3"
   );
-  const [needsReturnRide, setNeedsReturnRide] = useState(
-    existingResponse?.needs_return_ride ?? false
-  );
-  const [returnAddress, setReturnAddress] = useState(
+
+  const [afterAddress, setAfterAddress] = useState(
     existingResponse?.return_address ?? ""
   );
-  const [preferences, setPreferences] = useState<PreferenceEntry[]>(
-    existingResponse?.preferences?.map((p) => ({
-      target_user_id: p.target_user_id,
-      type: p.type,
-    })) ?? []
-  );
+
+  const [note, setNote] = useState(existingResponse?.note ?? "");
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function addPreference(targetUserId: string, type: PreferenceType): void {
-    // Don't add duplicate
-    if (preferences.some((p) => p.target_user_id === targetUserId)) return;
-    setPreferences([...preferences, { target_user_id: targetUserId, type }]);
+  const isAttendingOnly = !beforeRole && !afterRole;
+
+  const departureTime = useMemo(
+    () => toTime24(timeHour, timeMinute, timePeriod),
+    [timeHour, timeMinute, timePeriod]
+  );
+
+  function getNextStep(current: number): number {
+    if (current === 0) {
+      if (beforeRole) return 1;
+      if (afterRole) return 2;
+      return 3;
+    }
+    if (current === 1) return afterRole ? 2 : 3;
+    if (current === 2) return 3;
+    return current;
   }
 
-  function removePreference(targetUserId: string): void {
-    setPreferences(preferences.filter((p) => p.target_user_id !== targetUserId));
+  function getPrevStep(current: number): number {
+    if (current === 3) {
+      if (afterRole) return 2;
+      if (beforeRole) return 1;
+      return 0;
+    }
+    if (current === 2) return beforeRole ? 1 : 0;
+    if (current === 1) return 0;
+    return 0;
   }
 
-  async function handleSubmit(e: React.FormEvent): Promise<void> {
-    e.preventDefault();
-    if (!role) return;
+  function canProceed(): boolean {
+    if (step === 0) return true;
+    if (step === 1) {
+      if (!beforeAddress.trim()) return false;
+      if (!timeHour || !timeMinute) return false;
+      if (
+        beforeRole === "driver" &&
+        (!availableSeats || parseInt(availableSeats, 10) < 1)
+      )
+        return false;
+      return true;
+    }
+    if (step === 2) {
+      if (!afterAddress.trim()) return false;
+      if (
+        afterRole === "driver" &&
+        beforeRole !== "driver" &&
+        (!availableSeats || parseInt(availableSeats, 10) < 1)
+      )
+        return false;
+      return true;
+    }
+    return true;
+  }
 
+  const visibleStepIds = [
+    0,
+    ...(beforeRole ? [1] : []),
+    ...(afterRole ? [2] : []),
+    3,
+  ];
+  const currentStepIndex = visibleStepIds.indexOf(step);
+
+  function handleNext(): void {
+    if (!canProceed()) return;
+    setStep(getNextStep(step));
+  }
+
+  function handleBack(): void {
+    setStep(getPrevStep(step));
+  }
+
+  async function handleSubmit(): Promise<void> {
     setIsSubmitting(true);
     setError(null);
 
-    const payload: Record<string, unknown> = {
+    let role = "attending";
+    if (beforeRole) role = beforeRole;
+    else if (afterRole) role = afterRole;
+
+    const payload = {
       role,
-      preferences,
+      before_role: beforeRole,
+      after_role: afterRole,
+      pickup_address: beforeAddress || null,
+      return_address: afterAddress || null,
+      departure_time: departureTime || null,
+      available_seats:
+        beforeRole === "driver" || afterRole === "driver"
+          ? parseInt(availableSeats, 10)
+          : null,
+      needs_return_ride: afterRole !== null,
+      note: note || null,
     };
 
-    if (role === "driver" || role === "rider") {
-      payload.pickup_address = pickupAddress;
-      // Coordinates will be geocoded later via Google Maps integration
-      payload.pickup_lat = null;
-      payload.pickup_lng = null;
-    }
+    try {
+      const res = await fetch(`/api/responses/${eventId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    if (role === "driver") {
-      payload.available_seats = parseInt(availableSeats, 10);
-      payload.needs_return_ride = needsReturnRide;
-      if (needsReturnRide) {
-        payload.return_address = returnAddress || pickupAddress;
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Failed to submit response");
+        return;
       }
-    }
 
-    if (role === "rider") {
-      payload.needs_return_ride = needsReturnRide;
-      if (needsReturnRide) {
-        payload.return_address = returnAddress || pickupAddress;
-      }
-    }
-
-    const res = await fetch(`/api/responses/${eventId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) {
-      const data = await res.json();
-      setError(data.error || "Failed to submit response");
+      setSubmitted(true);
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
       setIsSubmitting(false);
-      return;
     }
-
-    setSubmitted(true);
-    setIsSubmitting(false);
   }
 
   if (submitted) {
     return (
       <Card>
-        <CardContent className="py-8 text-center">
-          <p className="text-lg font-medium">Response submitted!</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            You&apos;ll be notified when carpool assignments are ready.
+        <CardContent className="py-10 text-center">
+          <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-foreground/5">
+            <HugeiconsIcon icon={CheckmarkCircle02Icon} className="size-6" />
+          </div>
+          <p className="text-lg font-semibold tracking-tight">
+            You&apos;re all set!
+          </p>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            We&apos;ll notify you when carpool assignments are ready.
           </p>
           <Button
             variant="outline"
-            className="mt-4"
-            onClick={() => setSubmitted(false)}
+            className="mt-6"
+            onClick={() => {
+              setSubmitted(false);
+              setStep(0);
+            }}
           >
             Edit response
           </Button>
@@ -169,193 +244,404 @@ export function EventForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Role Selection */}
-      <div className="space-y-3">
-        <Label className="text-base">How are you getting there?</Label>
-        <div className="grid gap-2">
-          {ROLE_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => setRole(option.value)}
-              className={`rounded-lg border p-4 text-left transition-colors ${
-                role === option.value
-                  ? "border-primary bg-primary/5"
-                  : "hover:bg-muted/50"
-              }`}
-            >
-              <p className="font-medium">{option.label}</p>
-              <p className="text-sm text-muted-foreground">
-                {option.description}
-              </p>
-            </button>
-          ))}
-        </div>
+    <div className="space-y-8">
+      {/* Progress bar */}
+      <div className="flex items-center justify-center gap-1.5">
+        {visibleStepIds.map((_, i) => (
+          <div
+            key={i}
+            className={`h-1 rounded-full transition-all duration-300 ${
+              i <= currentStepIndex
+                ? "w-10 bg-foreground"
+                : "w-6 bg-foreground/10"
+            }`}
+          />
+        ))}
       </div>
 
-      {/* Driver / Rider fields */}
-      {(role === "driver" || role === "rider") && (
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="pickup_address">
-              {role === "driver" ? "Where are you leaving from?" : "Pickup address"}
-            </Label>
-            <Input
-              id="pickup_address"
-              placeholder="Enter your address"
-              value={pickupAddress}
-              onChange={(e) => setPickupAddress(e.target.value)}
-              required
-            />
-            <p className="text-xs text-muted-foreground">
-              Google Maps autocomplete will be added here
+      {/* Step 0: Selection */}
+      {step === 0 && (
+        <div className="space-y-8">
+          <div className="text-center">
+            <h2 className="text-xl font-semibold tracking-tight">
+              How would you like to participate?
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Select all that apply
             </p>
           </div>
 
-          {role === "driver" && (
-            <div className="space-y-2">
-              <Label htmlFor="available_seats">Available seats (excluding you)</Label>
+          {/* Before the event */}
+          <div className="space-y-3">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">
+              Before the event
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  setBeforeRole((prev) => (prev === "rider" ? null : "rider"))
+                }
+                className={`flex flex-col items-center gap-2 rounded-2xl border px-4 py-5 text-center transition-all ${
+                  beforeRole === "rider"
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-border hover:border-foreground/20 hover:bg-muted/50"
+                }`}
+              >
+                <HugeiconsIcon icon={LocationUser01Icon} className="size-6" strokeWidth={1.5} />
+                <span className="text-sm font-medium">Need a ride</span>
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setBeforeRole((prev) => (prev === "driver" ? null : "driver"))
+                }
+                className={`flex flex-col items-center gap-2 rounded-2xl border px-4 py-5 text-center transition-all ${
+                  beforeRole === "driver"
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-border hover:border-foreground/20 hover:bg-muted/50"
+                }`}
+              >
+                <HugeiconsIcon icon={Car01Icon} className="size-6" strokeWidth={1.5} />
+                <span className="text-sm font-medium">Can drive</span>
+              </button>
+            </div>
+          </div>
+
+          {/* After the event */}
+          <div className="space-y-3">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">
+              After the event
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  setAfterRole((prev) => (prev === "rider" ? null : "rider"))
+                }
+                className={`flex flex-col items-center gap-2 rounded-2xl border px-4 py-5 text-center transition-all ${
+                  afterRole === "rider"
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-border hover:border-foreground/20 hover:bg-muted/50"
+                }`}
+              >
+                <HugeiconsIcon icon={LocationUser01Icon} className="size-6" strokeWidth={1.5} />
+                <span className="text-sm font-medium">Need a ride</span>
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setAfterRole((prev) => (prev === "driver" ? null : "driver"))
+                }
+                className={`flex flex-col items-center gap-2 rounded-2xl border px-4 py-5 text-center transition-all ${
+                  afterRole === "driver"
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-border hover:border-foreground/20 hover:bg-muted/50"
+                }`}
+              >
+                <HugeiconsIcon icon={Car01Icon} className="size-6" strokeWidth={1.5} />
+                <span className="text-sm font-medium">Can drive</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Neither */}
+          <button
+            type="button"
+            onClick={() => {
+              setBeforeRole(null);
+              setAfterRole(null);
+            }}
+            className={`flex w-full items-center justify-center gap-2 rounded-2xl border px-4 py-4 text-center transition-all ${
+              isAttendingOnly
+                ? "border-foreground bg-foreground text-background"
+                : "border-border hover:border-foreground/20 hover:bg-muted/50"
+            }`}
+          >
+            <HugeiconsIcon icon={Coffee01Icon} className="size-5" strokeWidth={1.5} />
+            <span className="text-sm font-medium">
+              Neither — just attending
+            </span>
+          </button>
+
+          <Button onClick={handleNext} className="w-full" size="lg">
+            Continue
+          </Button>
+        </div>
+      )}
+
+      {/* Step 1: Before the event details */}
+      {step === 1 && (
+        <div className="space-y-8">
+          <div>
+            <button
+              type="button"
+              onClick={handleBack}
+              className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              ← Back
+            </button>
+            <h2 className="mt-3 text-xl font-semibold tracking-tight">
+              {beforeRole === "driver" ? "Driving details" : "Pickup details"}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Before the event
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            <div className="space-y-2.5">
+              <Label>
+                {beforeRole === "driver"
+                  ? "Latest departure time"
+                  : "Earliest pickup time"}
+              </Label>
+              <div className="flex items-center gap-2">
+                <Select value={timeHour} onValueChange={(v) => setTimeHour(v ?? "")}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Hour" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 12 }, (_, i) =>
+                      (i + 1).toString()
+                    ).map((h) => (
+                      <SelectItem key={h} value={h}>
+                        {h}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-lg font-medium text-muted-foreground">
+                  :
+                </span>
+                <Select value={timeMinute} onValueChange={(v) => setTimeMinute(v ?? "")}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Min" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["00", "15", "30", "45"].map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={timePeriod} onValueChange={(v) => setTimePeriod(v ?? "PM")}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="AM/PM" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="AM">AM</SelectItem>
+                    <SelectItem value="PM">PM</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2.5">
+              <Label htmlFor="before_address">
+                {beforeRole === "driver"
+                  ? "Departing from"
+                  : "Pickup location"}
+              </Label>
               <Input
-                id="available_seats"
-                type="number"
-                min="1"
-                max="10"
-                value={availableSeats}
-                onChange={(e) => setAvailableSeats(e.target.value)}
+                id="before_address"
+                placeholder="Enter address"
+                value={beforeAddress}
+                onChange={(e) => setBeforeAddress(e.target.value)}
                 required
               />
             </div>
-          )}
 
-          <div className="flex items-center gap-3">
-            <input
-              id="needs_return_ride"
-              type="checkbox"
-              checked={needsReturnRide}
-              onChange={(e) => setNeedsReturnRide(e.target.checked)}
-              className="size-4 rounded border-input"
-            />
-            <Label htmlFor="needs_return_ride" className="text-sm font-normal">
-              {role === "driver"
-                ? "I'll give rides after the event too"
-                : "I also need a ride home after the event"}
-            </Label>
+            {beforeRole === "driver" && (
+              <div className="space-y-2.5">
+                <Label>Available seats</Label>
+                <p className="-mt-1 text-xs text-muted-foreground">
+                  Not counting yourself
+                </p>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() =>
+                      setAvailableSeats((prev) =>
+                        Math.max(1, parseInt(prev, 10) - 1).toString()
+                      )
+                    }
+                    disabled={parseInt(availableSeats, 10) <= 1}
+                  >
+                    −
+                  </Button>
+                  <span className="w-8 text-center text-lg font-semibold tabular-nums">
+                    {availableSeats}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() =>
+                      setAvailableSeats((prev) =>
+                        Math.min(10, parseInt(prev, 10) + 1).toString()
+                      )
+                    }
+                    disabled={parseInt(availableSeats, 10) >= 10}
+                  >
+                    +
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
-          {needsReturnRide && (
-            <div className="space-y-2">
-              <Label htmlFor="return_address">
-                Return address (leave blank if same as pickup)
+          <Button
+            onClick={handleNext}
+            disabled={!canProceed()}
+            className="w-full"
+            size="lg"
+          >
+            Continue
+          </Button>
+        </div>
+      )}
+
+      {/* Step 2: After the event details */}
+      {step === 2 && (
+        <div className="space-y-8">
+          <div>
+            <button
+              type="button"
+              onClick={handleBack}
+              className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              ← Back
+            </button>
+            <h2 className="mt-3 text-xl font-semibold tracking-tight">
+              {afterRole === "driver" ? "Driving details" : "Drop-off details"}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              After the event
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            <div className="space-y-2.5">
+              <Label htmlFor="after_address">
+                {afterRole === "driver"
+                  ? "Heading to"
+                  : "Drop-off destination"}
               </Label>
               <Input
-                id="return_address"
-                placeholder="Same as pickup address"
-                value={returnAddress}
-                onChange={(e) => setReturnAddress(e.target.value)}
+                id="after_address"
+                placeholder="Enter destination"
+                value={afterAddress}
+                onChange={(e) => setAfterAddress(e.target.value)}
+                required
               />
             </div>
-          )}
+
+            {afterRole === "driver" && beforeRole !== "driver" && (
+              <div className="space-y-2.5">
+                <Label>Available seats</Label>
+                <p className="-mt-1 text-xs text-muted-foreground">
+                  Not counting yourself
+                </p>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() =>
+                      setAvailableSeats((prev) =>
+                        Math.max(1, parseInt(prev, 10) - 1).toString()
+                      )
+                    }
+                    disabled={parseInt(availableSeats, 10) <= 1}
+                  >
+                    −
+                  </Button>
+                  <span className="w-8 text-center text-lg font-semibold tabular-nums">
+                    {availableSeats}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() =>
+                      setAvailableSeats((prev) =>
+                        Math.min(10, parseInt(prev, 10) + 1).toString()
+                      )
+                    }
+                    disabled={parseInt(availableSeats, 10) >= 10}
+                  >
+                    +
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <Button
+            onClick={handleNext}
+            disabled={!canProceed()}
+            className="w-full"
+            size="lg"
+          >
+            Continue
+          </Button>
         </div>
       )}
 
-      {/* Preferences */}
-      {role && role !== "attending" && members.length > 0 && (
-        <div className="space-y-3">
-          <Label className="text-base">Ride preferences (optional)</Label>
-          <p className="text-sm text-muted-foreground">
-            Select people you&apos;d prefer to ride with or want to avoid.
-          </p>
+      {/* Step 3: Additional note & submit */}
+      {step === 3 && (
+        <div className="space-y-8">
+          <div>
+            <button
+              type="button"
+              onClick={handleBack}
+              className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              ← Back
+            </button>
+            <h2 className="mt-3 text-xl font-semibold tracking-tight">
+              Anything else?
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Optional — add a note for your driver or riders
+            </p>
+          </div>
 
-          {/* Current preferences */}
-          {preferences.length > 0 && (
-            <div className="space-y-2">
-              {preferences.map((pref) => {
-                const member = members.find((m) => m.id === pref.target_user_id);
-                return (
-                  <div
-                    key={pref.target_user_id}
-                    className="flex items-center justify-between rounded-md border px-3 py-2"
-                  >
-                    <span className="text-sm">
-                      {member?.full_name || member?.email}{" "}
-                      <span
-                        className={
-                          pref.type === "prefer"
-                            ? "text-green-600"
-                            : "text-red-500"
-                        }
-                      >
-                        ({pref.type})
-                      </span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removePreference(pref.target_user_id)}
-                      className="text-sm text-muted-foreground hover:text-foreground"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                );
-              })}
+          <div className="space-y-2.5">
+            <Label htmlFor="note">Note</Label>
+            <Textarea
+              id="note"
+              placeholder="e.g. I'll be at the main entrance, bringing a large bag, etc."
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={3}
+            />
+          </div>
+
+          {error && (
+            <div className="rounded-2xl border border-destructive/20 bg-destructive/5 px-4 py-3">
+              <p className="text-sm text-destructive">{error}</p>
             </div>
           )}
 
-          {/* Add preference */}
-          <div className="space-y-2">
-            {members
-              .filter(
-                (m) =>
-                  !preferences.some((p) => p.target_user_id === m.id)
-              )
-              .map((member) => (
-                <div
-                  key={member.id}
-                  className="flex items-center justify-between rounded-md border px-3 py-2"
-                >
-                  <span className="text-sm">
-                    {member.full_name || member.email}
-                  </span>
-                  <div className="flex gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="xs"
-                      onClick={() => addPreference(member.id, "prefer")}
-                    >
-                      Prefer
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="xs"
-                      onClick={() => addPreference(member.id, "avoid")}
-                      className="text-destructive"
-                    >
-                      Avoid
-                    </Button>
-                  </div>
-                </div>
-              ))}
-          </div>
+          <Button
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            className="w-full"
+            size="lg"
+          >
+            {isSubmitting
+              ? "Submitting…"
+              : existingResponse
+                ? "Update Response"
+                : "Submit Response"}
+          </Button>
         </div>
       )}
-
-      {error && <p className="text-sm text-destructive">{error}</p>}
-
-      <Button
-        type="submit"
-        disabled={!role || isSubmitting}
-        className="w-full"
-        size="lg"
-      >
-        {isSubmitting
-          ? "Submitting…"
-          : existingResponse
-            ? "Update Response"
-            : "Submit Response"}
-      </Button>
-    </form>
+    </div>
   );
 }

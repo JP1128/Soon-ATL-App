@@ -26,29 +26,12 @@ export default async function EventPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Get user's default_role from profile
-  let defaultRole: string | null = null;
-  if (user) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("default_role")
-      .eq("id", user.id)
-      .single();
-    defaultRole = profile?.default_role ?? null;
-  }
-
-  // Get list of members for preferences picker
-  const { data: members } = await supabase
-    .from("profiles")
-    .select("id, full_name, email")
-    .neq("id", user?.id ?? "");
-
   // Get user's existing response if any
   let existingResponse = null;
   if (user) {
     const { data } = await supabase
       .from("responses")
-      .select("*, preferences(*)")
+      .select("*")
       .eq("event_id", id)
       .eq("user_id", user.id)
       .maybeSingle();
@@ -80,7 +63,7 @@ export default async function EventPage({
       </div>
 
       {!user ? (
-        <div className="rounded-lg border p-6 text-center">
+        <div className="rounded-2xl border p-6 text-center">
           <p className="mb-4 text-muted-foreground">
             Sign in with Google to submit your carpool preferences.
           </p>
@@ -92,7 +75,7 @@ export default async function EventPage({
           </a>
         </div>
       ) : !isOpen ? (
-        <div className="rounded-lg border p-6 text-center">
+        <div className="rounded-2xl border p-6 text-center">
           <p className="text-muted-foreground">
             {event.status === "draft"
               ? "This event is not open for responses yet."
@@ -100,12 +83,12 @@ export default async function EventPage({
           </p>
         </div>
       ) : (
-        <EventForm
-          eventId={id}
-          members={members ?? []}
-          existingResponse={existingResponse}
-          defaultRole={defaultRole}
-        />
+        <div className="rounded-2xl border p-5">
+          <EventForm
+            eventId={id}
+            existingResponse={existingResponse}
+          />
+        </div>
       )}
     </div>
   );

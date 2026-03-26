@@ -35,11 +35,15 @@ export interface Event {
   created_at: string;
 }
 
+export type LegRole = "driver" | "rider";
+
 export interface Response {
   id: string;
   event_id: string;
   user_id: string;
   role: ResponseRole;
+  before_role: LegRole | null;
+  after_role: LegRole | null;
   pickup_address: string | null;
   pickup_lat: number | null;
   pickup_lng: number | null;
@@ -51,6 +55,8 @@ export interface Response {
   return_lat: number | null;
   return_lng: number | null;
   available_seats: number | null;
+  departure_time: string | null;
+  note: string | null;
   submitted_at: string;
   updated_at: string;
 }

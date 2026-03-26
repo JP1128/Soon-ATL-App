@@ -63,6 +63,8 @@ export async function POST(request: Request, { params }: RouteParams): Promise<N
   const body = await request.json();
   const {
     role,
+    before_role,
+    after_role,
     pickup_address,
     pickup_lat,
     pickup_lng,
@@ -74,6 +76,8 @@ export async function POST(request: Request, { params }: RouteParams): Promise<N
     return_lat,
     return_lng,
     available_seats,
+    departure_time,
+    note,
     preferences,
   } = body;
 
@@ -99,7 +103,11 @@ export async function POST(request: Request, { params }: RouteParams): Promise<N
         return_address: return_address || null,
         return_lat: return_lat || null,
         return_lng: return_lng || null,
-        available_seats: role === "driver" ? available_seats : null,
+        available_seats: (role === "driver" || before_role === "driver" || after_role === "driver") ? available_seats : null,
+        before_role: before_role || null,
+        after_role: after_role || null,
+        departure_time: departure_time || null,
+        note: note || null,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "event_id,user_id" }
