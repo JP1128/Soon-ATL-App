@@ -27,12 +27,12 @@ export interface Profile {
 export interface Event {
   id: string;
   title: string;
-  description: string;
   event_date: string;
   event_time: string | null;
   location: string;
   status: EventStatus;
   created_by: string;
+  sent_at: string | null;
   created_at: string;
 }
 

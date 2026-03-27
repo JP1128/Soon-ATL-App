@@ -57,7 +57,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   const body = await request.json();
-  const { title, description, event_date, event_time, location } = body;
+  const { title, event_date, event_time, location } = body;
 
   if (!title) {
     return NextResponse.json(
@@ -82,7 +82,6 @@ export async function POST(request: Request): Promise<NextResponse> {
     .from("events")
     .insert({
       title,
-      description: description ?? "",
       event_date: event_date || getNextFriday(),
       event_time: event_time || null,
       location: location || "",

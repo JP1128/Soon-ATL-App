@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
+import { formatDisplayAddress } from "@/lib/utils";
 import { EventForm } from "@/components/forms/event-form";
 
 interface PageProps {
@@ -64,11 +65,11 @@ export default async function EventPage({
       <div className="mb-3 tall:mb-4 xtall:mb-6 text-center">
         <h1 className="text-xl font-bold tracking-tight tall:text-2xl">{event.title}</h1>
         <p className="mt-1 text-muted-foreground">
-          {formattedDate}{formattedTime ? ` at ${formattedTime}` : ""} · {event.location}
+          {formattedDate}{formattedTime ? ` at ${formattedTime}` : ""}
         </p>
-        {event.description && (
-          <p className="mt-2 text-sm text-muted-foreground">{event.description}</p>
-        )}
+        <p className="text-sm text-muted-foreground">
+          {formatDisplayAddress(event.location)}
+        </p>
       </div>
 
       {!user ? (

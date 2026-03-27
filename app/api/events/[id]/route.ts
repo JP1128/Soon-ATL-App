@@ -51,7 +51,7 @@ export async function PATCH(request: Request, { params }: RouteParams): Promise<
   }
 
   const body = await request.json();
-  const allowedFields = ["title", "description", "event_date", "event_time", "location", "status"];
+  const allowedFields = ["title", "event_date", "event_time", "location", "status"];
   const updates: Record<string, unknown> = {};
 
   for (const field of allowedFields) {
@@ -66,6 +66,7 @@ export async function PATCH(request: Request, { params }: RouteParams): Promise<
 
   // When activating an event (setting to "open"), ensure no other event is already open
   if (updates.status === "open") {
+    updates.sent_at = new Date().toISOString();
     const { data: openEvents } = await supabase
       .from("events")
       .select("id")

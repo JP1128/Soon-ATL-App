@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { formatDisplayAddress } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -87,12 +88,8 @@ export function EventCard({ event, responseCount, isActive }: EventCardProps): R
       </div>
 
       {event.location && (
-        <p className="mt-2 text-sm text-muted-foreground">{event.location}</p>
+        <p className="mt-2 text-sm text-muted-foreground">{formatDisplayAddress(event.location)}</p>
       )}
-      {event.description && (
-        <p className="mt-1 text-sm text-muted-foreground">{event.description}</p>
-      )}
-
       <div className="mt-4 flex items-center justify-between border-t pt-3">
         <span className="text-xs text-muted-foreground">
           {responseCount} response{responseCount !== 1 ? "s" : ""}

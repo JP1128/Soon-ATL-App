@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
+import { formatDisplayAddress } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import type { EventStatus } from "@/types/database";
 
@@ -100,10 +101,7 @@ export default async function EventDetailPage({
         <p className="text-sm text-muted-foreground">
           {formattedDate}{formattedTime ? ` · ${formattedTime}` : ""}
         </p>
-        <p className="text-sm text-muted-foreground">{event.location}</p>
-        {event.description && (
-          <p className="text-sm text-muted-foreground">{event.description}</p>
-        )}
+        <p className="text-sm text-muted-foreground">{formatDisplayAddress(event.location)}</p>
       </div>
 
       <section className="space-y-6">

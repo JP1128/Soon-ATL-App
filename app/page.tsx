@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { formatDisplayAddress } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ActiveEventCard } from "@/components/active-event-card";
 import type { Event, Profile, Response, Carpool, CarpoolRider } from "@/types/database";
@@ -107,7 +108,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
               weekday: "short",
               month: "short",
               day: "numeric",
-            })}${activeEvent.event_time ? ` · ${new Date(`1970-01-01T${activeEvent.event_time}`).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : ""} · ${activeEvent.location}`}
+            })}${activeEvent.event_time ? ` · ${new Date(`1970-01-01T${activeEvent.event_time}`).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : ""} · ${formatDisplayAddress(activeEvent.location)}`}
             status={userStatus}
             hasPhoneNumber={!!profile?.phone_number}
           />

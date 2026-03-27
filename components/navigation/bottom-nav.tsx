@@ -76,7 +76,7 @@ export function BottomNav({
   const pageNames: Record<string, string> = {
     "/": "",
     "/profile": "Profile",
-    "/dashboard": "Manage Events",
+    "/dashboard": "Manage Event",
     "/dashboard/past-events": "Past Events",
   };
 
@@ -120,7 +120,7 @@ export function BottomNav({
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem render={<Link href="/dashboard" />}>
-                  Manage Events
+                  Manage Event
                 </DropdownMenuItem>
                 <DropdownMenuItem render={<Link href="/dashboard/past-events" />}>
                   Past Events
