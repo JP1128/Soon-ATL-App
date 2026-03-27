@@ -64,11 +64,14 @@ interface RiderEntry {
   profile: ProfileData;
   departureTime: string | null;
   pickupAddress: string | null;
+  pickupLat: number | null;
+  pickupLng: number | null;
   note: string | null;
 }
 
 interface CarpoolAssignmentsProps {
   eventId: string;
+  eventLocation: string;
   carpoolsSentAt: string | null;
 }
 
@@ -137,6 +140,7 @@ import { GOOGLE_MAPS_LIBRARIES } from "@/lib/google-maps/constants";
 
 export function CarpoolAssignments({
   eventId,
+  eventLocation,
   carpoolsSentAt,
 }: CarpoolAssignmentsProps): React.ReactElement {
   const [responses, setResponses] = useState<ResponseRow[]>([]);
@@ -149,7 +153,15 @@ export function CarpoolAssignments({
   const [expandedOffset, setExpandedOffset] = useState(0);
   const [animatingUp, setAnimatingUp] = useState(false);
   const driverCardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const [addRiderTarget, setAddRiderTarget] = useState<{ driverId: string; driverName: string; availableSeats: number; currentRiderCount: number } | null>(null);
+  const [addRiderTarget, setAddRiderTarget] = useState<{
+    driverId: string;
+    driverName: string;
+    availableSeats: number;
+    currentRiderCount: number;
+    driverLat: number | null;
+    driverLng: number | null;
+    assignedRiderCoords: Array<{ lat: number; lng: number }>;
+  } | null>(null);
   const [showOnlyUnassigned, setShowOnlyUnassigned] = useState(true);
   const [riderDetailTarget, setRiderDetailTarget] = useState<{
     rider: RiderEntry;
@@ -320,6 +332,8 @@ export function CarpoolAssignments({
             },
             departureTime: resp?.departure_time ?? null,
             pickupAddress: resp?.pickup_address ?? null,
+            pickupLat: resp?.pickup_lat ?? null,
+            pickupLng: resp?.pickup_lng ?? null,
             note: resp?.note ?? null,
           };
         });
@@ -348,6 +362,8 @@ export function CarpoolAssignments({
         profile: r.profiles,
         departureTime: r.departure_time,
         pickupAddress: r.pickup_address,
+        pickupLat: r.pickup_lat,
+        pickupLng: r.pickup_lng,
         note: r.note,
       }));
 
@@ -395,6 +411,8 @@ export function CarpoolAssignments({
         userId: r.user_id,
         profile: r.profiles,
         assignedTo: riderDriverMap.get(r.user_id) ?? null,
+        pickupLat: r.pickup_lat,
+        pickupLng: r.pickup_lng,
       }))
       // Exclude riders already assigned to the target driver
       .filter((r) => !(r.assignedTo && addRiderTarget && r.assignedTo.driverId === addRiderTarget.driverId));
@@ -813,7 +831,7 @@ export function CarpoolAssignments({
                           </p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          <span className={cn("flex items-center gap-1 text-xs", isFull ? "text-destructive" : "text-muted-foreground")}>
+                          <span className={cn("flex items-center gap-1 text-xs text-muted-foreground", isFull && "line-through")}>
                             <HugeiconsIcon
                               icon={Car01Icon}
                               className="size-3.5"
@@ -846,15 +864,7 @@ export function CarpoolAssignments({
                                 {driver.pickupAddress && (
                                   <div className="flex items-start gap-1.5">
                                     <HugeiconsIcon icon={MapsSearchIcon} className="size-3.5 text-muted-foreground mt-0.5 shrink-0" strokeWidth={1.5} />
-                                    <div className="min-w-0">
-                                      {placeNames.get(driver.userId) && (
-                                        <p className="text-xs font-medium leading-tight">{placeNames.get(driver.userId)}</p>
-                                      )}
-                                      <p className={cn(
-                                        "text-[11px] text-muted-foreground leading-tight",
-                                        placeNames.get(driver.userId) && "mt-0.5"
-                                      )}>{stripStateZip(driver.pickupAddress)}</p>
-                                    </div>
+                                    <p className="text-[11px] text-muted-foreground leading-tight">{stripStateZip(driver.pickupAddress)}</p>
                                   </div>
                                 )}
                                 {driver.departureTime && (
@@ -954,7 +964,17 @@ export function CarpoolAssignments({
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setAddRiderTarget({ driverId: driver.userId, driverName: driver.profile.full_name, availableSeats: driver.availableSeats, currentRiderCount: driver.assignedRiders.length });
+                                  setAddRiderTarget({
+                                    driverId: driver.userId,
+                                    driverName: driver.profile.full_name,
+                                    availableSeats: driver.availableSeats,
+                                    currentRiderCount: driver.assignedRiders.length,
+                                    driverLat: driver.pickupLat,
+                                    driverLng: driver.pickupLng,
+                                    assignedRiderCoords: driver.assignedRiders
+                                      .filter((r) => r.pickupLat != null && r.pickupLng != null)
+                                      .map((r) => ({ lat: r.pickupLat!, lng: r.pickupLng! })),
+                                  });
                                 }}
                                 className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border/60 py-1.5 mt-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
                               >
@@ -982,7 +1002,7 @@ export function CarpoolAssignments({
                       type="button"
                       onClick={() => {
                         setRiderDetailTarget({
-                          rider: { userId: rider.userId, profile: rider.profile, departureTime: null, pickupAddress: null, note: null },
+                          rider: { userId: rider.userId, profile: rider.profile, departureTime: null, pickupAddress: null, pickupLat: null, pickupLng: null, note: null },
                           currentDriver: assignedDriver
                             ? { userId: assignedDriver.driverId, name: assignedDriver.driverName }
                             : null,
@@ -1051,6 +1071,11 @@ export function CarpoolAssignments({
         onToggleFilter={setShowOnlyUnassigned}
         targetDriverName={addRiderTarget?.driverName ?? ""}
         remainingSeats={addRiderTarget ? addRiderTarget.availableSeats - addRiderTarget.currentRiderCount : 0}
+        driverLat={addRiderTarget?.driverLat ?? null}
+        driverLng={addRiderTarget?.driverLng ?? null}
+        assignedRiderCoords={addRiderTarget?.assignedRiderCoords ?? []}
+        eventLocation={eventLocation}
+        isGoogleLoaded={mapsLoaded}
       />
 
       {/* Rider detail overlay */}
@@ -1086,6 +1111,8 @@ interface OverlayRider {
   userId: string;
   profile: ProfileData;
   assignedTo: { driverId: string; driverName: string } | null;
+  pickupLat: number | null;
+  pickupLng: number | null;
 }
 
 function RiderSelectionOverlay({
@@ -1097,6 +1124,11 @@ function RiderSelectionOverlay({
   onToggleFilter,
   targetDriverName,
   remainingSeats,
+  driverLat,
+  driverLng,
+  assignedRiderCoords,
+  eventLocation,
+  isGoogleLoaded,
 }: {
   open: boolean;
   onClose: () => void;
@@ -1106,24 +1138,18 @@ function RiderSelectionOverlay({
   onToggleFilter: (value: boolean) => void;
   targetDriverName: string;
   remainingSeats: number;
+  driverLat: number | null;
+  driverLng: number | null;
+  assignedRiderCoords: Array<{ lat: number; lng: number }>;
+  eventLocation: string;
+  isGoogleLoaded: boolean;
 }): React.ReactElement | null {
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
   const [selectedRiderIds, setSelectedRiderIds] = useState<Set<string>>(new Set());
 
-  // Count how many selected riders are swaps (already assigned elsewhere)
-  const swapCount = useMemo(() => {
-    let count = 0;
-    for (const id of selectedRiderIds) {
-      const r = riders.find((r) => r.userId === id);
-      if (r?.assignedTo) count++;
-    }
-    return count;
-  }, [selectedRiderIds, riders]);
-
-  // Net new seats needed = selected count minus swaps (swaps don't consume new seats)
-  const newSeatsNeeded = selectedRiderIds.size - swapCount;
-  const atCapacity = newSeatsNeeded >= remainingSeats;
+  // Every selected rider needs a seat on this driver (including swaps from other drivers)
+  const atCapacity = selectedRiderIds.size >= remainingSeats;
 
   function toggleRider(riderId: string): void {
     setSelectedRiderIds((prev) => {
@@ -1132,9 +1158,7 @@ function RiderSelectionOverlay({
         next.delete(riderId);
       } else {
         // Check if adding this rider would exceed capacity
-        const isSwap = riders.find((r) => r.userId === riderId)?.assignedTo !== null;
-        const wouldNeed = newSeatsNeeded + (isSwap ? 0 : 1);
-        if (wouldNeed <= remainingSeats) {
+        if (next.size < remainingSeats) {
           next.add(riderId);
         }
       }
@@ -1164,6 +1188,122 @@ function RiderSelectionOverlay({
       };
     }
   }, [open]);
+
+  // Haversine distance in km
+  const haversineKm = useCallback(
+    (a: { lat: number; lng: number }, b: { lat: number; lng: number }): number => {
+      const R = 6371;
+      const toRad = (deg: number): number => (deg * Math.PI) / 180;
+      const dLat = toRad(b.lat - a.lat);
+      const dLng = toRad(b.lng - a.lng);
+      const sinLat = Math.sin(dLat / 2);
+      const sinLng = Math.sin(dLng / 2);
+      const h = sinLat * sinLat + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * sinLng * sinLng;
+      return 2 * R * Math.asin(Math.sqrt(h));
+    },
+    []
+  );
+
+  // Estimate detour times — recalculates when selection changes
+  const detourMinutes = useMemo(() => {
+    if (!open || !driverLat || !driverLng) return new Map<string, number>();
+    const ridersWithCoords = riders.filter((r) => r.pickupLat != null && r.pickupLng != null);
+    if (ridersWithCoords.length === 0) return new Map<string, number>();
+
+    const ROAD_FACTOR = 1.3;
+    const AVG_SPEED_KMH = 55;
+
+    // Build list of pickup points: driver + already-selected riders
+    const pickupPoints: Array<{ lat: number; lng: number }> = [{ lat: driverLat, lng: driverLng }];
+    for (const id of selectedRiderIds) {
+      const r = ridersWithCoords.find((r) => r.userId === id);
+      if (r) pickupPoints.push({ lat: r.pickupLat!, lng: r.pickupLng! });
+    }
+
+    const results = new Map<string, number>();
+    for (const rider of ridersWithCoords) {
+      const riderLoc = { lat: rider.pickupLat!, lng: rider.pickupLng! };
+      // Distance from nearest pickup point (driver or any selected rider)
+      let minKm = Infinity;
+      for (const pt of pickupPoints) {
+        const km = haversineKm(pt, riderLoc);
+        if (km < minKm) minKm = km;
+      }
+      const detourMin = Math.round((minKm * ROAD_FACTOR / AVG_SPEED_KMH) * 60);
+      results.set(rider.userId, detourMin);
+    }
+
+    return results;
+  }, [open, driverLat, driverLng, riders, selectedRiderIds, haversineKm]);
+
+  // Geocode event location to get coordinates
+  const [eventCoords, setEventCoords] = useState<{ lat: number; lng: number } | null>(null);
+  useEffect(() => {
+    if (!open || !isGoogleLoaded || !eventLocation) return;
+    const geocoder = new google.maps.Geocoder();
+    let cancelled = false;
+    geocoder.geocode({ address: eventLocation }, (results, status) => {
+      if (cancelled || status !== "OK" || !results?.[0]) return;
+      const loc = results[0].geometry.location;
+      setEventCoords({ lat: loc.lat(), lng: loc.lng() });
+    });
+    return (): void => { cancelled = true; };
+  }, [open, isGoogleLoaded, eventLocation]);
+
+  // Nearest-neighbor chain route time helper (optionally includes final leg to destination)
+  const nnRouteMin = useCallback((
+    startLat: number,
+    startLng: number,
+    coords: Array<{ lat: number; lng: number }>,
+    destination?: { lat: number; lng: number } | null
+  ): number => {
+    if (coords.length === 0 && !destination) return 0;
+    const ROAD_FACTOR = 1.3;
+    const AVG_SPEED_KMH = 55;
+    let totalKm = 0;
+    let current = { lat: startLat, lng: startLng };
+    const remaining = [...coords];
+    while (remaining.length > 0) {
+      let bestIdx = 0;
+      let bestKm = Infinity;
+      for (let i = 0; i < remaining.length; i++) {
+        const km = haversineKm(current, remaining[i]);
+        if (km < bestKm) { bestKm = km; bestIdx = i; }
+      }
+      totalKm += bestKm;
+      current = remaining[bestIdx];
+      remaining.splice(bestIdx, 1);
+    }
+    // Add final leg to destination
+    if (destination) {
+      totalKm += haversineKm(current, destination);
+    }
+    return Math.round((totalKm * ROAD_FACTOR / AVG_SPEED_KMH) * 60);
+  }, [haversineKm]);
+
+  // Current route time for already-assigned riders → event
+  const currentRouteMin = useMemo(() => {
+    if (!driverLat || !driverLng) return 0;
+    if (assignedRiderCoords.length === 0 && !eventCoords) return 0;
+    return nnRouteMin(driverLat, driverLng, assignedRiderCoords, eventCoords);
+  }, [driverLat, driverLng, assignedRiderCoords, eventCoords, nnRouteMin]);
+
+  // Total estimated route time for assigned + selected riders → event
+  const totalRouteMin = useMemo(() => {
+    if (!driverLat || !driverLng || selectedRiderIds.size === 0) return 0;
+
+    const selectedCoords: Array<{ lat: number; lng: number }> = [];
+    for (const id of selectedRiderIds) {
+      const r = riders.find((r) => r.userId === id);
+      if (r?.pickupLat != null && r?.pickupLng != null) {
+        selectedCoords.push({ lat: r.pickupLat, lng: r.pickupLng });
+      }
+    }
+    if (selectedCoords.length === 0) return 0;
+
+    const allCoords = [...assignedRiderCoords, ...selectedCoords];
+    return nnRouteMin(driverLat, driverLng, allCoords, eventCoords);
+  }, [driverLat, driverLng, riders, selectedRiderIds, assignedRiderCoords, eventCoords, nnRouteMin]);
 
   if (!mounted) return null;
 
@@ -1228,7 +1368,8 @@ function RiderSelectionOverlay({
               riders.map((rider) => {
                 const isSelected = selectedRiderIds.has(rider.userId);
                 const isSwap = rider.assignedTo !== null;
-                const wouldExceed = !isSelected && atCapacity && !isSwap;
+                const wouldExceed = !isSelected && atCapacity;
+                const detour = detourMinutes.get(rider.userId);
                 return (
                   <button
                     key={rider.userId}
@@ -1259,22 +1400,47 @@ function RiderSelectionOverlay({
                       <p className="truncate text-xs font-medium">
                         {rider.profile.full_name}
                       </p>
-                      <p className="truncate text-[11px] text-muted-foreground">
+                      <p className={cn(
+                        "truncate text-[11px]",
+                        rider.assignedTo ? "text-muted-foreground" : "text-destructive"
+                      )}>
                         {rider.assignedTo
                           ? rider.assignedTo.driverName
                           : "Unassigned"}
                       </p>
                     </div>
-                    {!rider.assignedTo && (
-                      <span className="shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">
-                        Unassigned
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {detour != null ? (
+                        <span className={cn(
+                          "rounded-full px-2 py-0.5 text-[10px] font-medium",
+                          detour <= 5
+                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                            : detour <= 15
+                              ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                              : "bg-destructive/10 text-destructive"
+                        )}>
+                          ~{detour} min
+                        </span>
+                      ) : null}
+
+                    </div>
                   </button>
                 );
               })
             )}
           </div>
+
+          {/* Route time estimate */}
+          {selectedRiderIds.size === 0 && currentRouteMin > 0 && (
+            <p className="mt-3 text-center text-[11px] text-muted-foreground">
+              Current route: ~{currentRouteMin} min
+            </p>
+          )}
+          {selectedRiderIds.size > 0 && totalRouteMin > 0 && (
+            <p className="mt-3 text-center text-[11px] text-muted-foreground">
+              Est. total route: ~{totalRouteMin} min
+            </p>
+          )}
 
           {/* Action buttons */}
           <div className="mt-4 flex gap-3">
@@ -1485,8 +1651,8 @@ function RiderDetailOverlay({
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className={cn(
-                          "flex items-center gap-1 text-xs",
-                          isFull ? "text-destructive" : "text-muted-foreground"
+                          "flex items-center gap-1 text-xs text-muted-foreground",
+                          isFull && "line-through"
                         )}>
                           <HugeiconsIcon icon={Car01Icon} className="size-3.5" strokeWidth={1.5} />
                           {driver.assignedRiders.length}/{driver.availableSeats}
