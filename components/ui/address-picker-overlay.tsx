@@ -234,7 +234,7 @@ function AddressPickerOverlay({
                 setMarkerPos(null)
               }}
               placeholder="Search address..."
-              className="h-9 w-full rounded-4xl border border-input bg-input/30 pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-[3px] focus:ring-ring/50"
+              className="h-9 w-full rounded-4xl border border-input bg-input/30 pl-9 pr-3 text-base outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-[3px] focus:ring-ring/50 md:text-sm"
             />
           </div>
 

@@ -89,7 +89,7 @@ function ManualAddressOverlay({
               if (e.key === "Enter") handleConfirm()
             }}
             placeholder="e.g. 123 Main St, Atlanta, GA"
-            className="h-9 w-full rounded-4xl border border-input bg-input/30 px-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-[3px] focus:ring-ring/50"
+            className="h-9 w-full rounded-4xl border border-input bg-input/30 px-3 text-base outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-[3px] focus:ring-ring/50 md:text-sm"
           />
           <div className="mt-4 flex gap-3">
             <button
