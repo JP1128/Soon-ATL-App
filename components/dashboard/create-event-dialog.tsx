@@ -191,7 +191,6 @@ export function CreateEventDialog({ open, onOpenChange }: CreateEventDialogProps
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Event name"
-              className="text-base h-12"
               autoFocus
             />
           </div>
@@ -205,28 +204,30 @@ export function CreateEventDialog({ open, onOpenChange }: CreateEventDialogProps
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Date</p>
-                <button
-                  type="button"
-                  onClick={() => setCalendarOpen(true)}
-                  className="flex h-9 w-full items-center rounded-4xl border border-input bg-input/30 px-3 text-sm transition-colors hover:bg-input/50"
-                >
-                  {selectedDate ? (
-                    <span>{dayLabel}, {formatDateDisplay(selectedDate).split(", ").slice(0, -1).join(", ").split(" ").slice(1).join(" ")}</span>
-                  ) : (
-                    <span className="text-muted-foreground">Select date</span>
-                  )}
-                </button>
-              </div>
-              <div className="space-y-1.5">
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Time</p>
-                <button
-                  type="button"
-                  onClick={() => setTimeOpen(true)}
-                  className="flex h-9 w-full items-center rounded-4xl border border-input bg-input/30 px-3 text-sm tabular-nums transition-colors hover:bg-input/50"
-                >
-                  {hour || "–"}<span className="text-muted-foreground mx-0.5">:</span>{minute || "00"} {period}
-                </button>
+                <div className="flex items-baseline gap-1.5">
+                  <p className="flex-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Date</p>
+                  <p className="min-w-[7rem] text-xs font-medium uppercase tracking-wider text-muted-foreground">Time</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCalendarOpen(true)}
+                    className="flex h-9 flex-1 items-center rounded-4xl border border-input bg-input/30 px-3 text-sm transition-colors hover:bg-input/50"
+                  >
+                    {selectedDate ? (
+                      <span>{dayLabel}, {formatDateDisplay(selectedDate).split(", ").slice(0, -1).join(", ").split(" ").slice(1).join(" ")}</span>
+                    ) : (
+                      <span className="text-muted-foreground">Select date</span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTimeOpen(true)}
+                    className="flex h-9 min-w-[7rem] items-center justify-center gap-1 rounded-4xl border border-input bg-input/30 px-3 text-sm tabular-nums transition-colors hover:bg-input/50"
+                  >
+                    {hour || "–"}<span className="text-muted-foreground">:</span>{minute || "00"} {period}
+                  </button>
+                </div>
               </div>
               <DatePickerOverlay
                 open={calendarOpen}
@@ -253,11 +254,11 @@ export function CreateEventDialog({ open, onOpenChange }: CreateEventDialogProps
 
         {/* Step 3: Location */}
         {step === 3 && (
-          <div onKeyDown={handleKeyDown}>
+          <div onKeyDown={handleKeyDown} className="min-w-0">
             <DialogHeader className="mb-6">
               <DialogTitle className="text-lg">Where is it?</DialogTitle>
             </DialogHeader>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <button
                 type="button"
                 onClick={() => setLocationType((t) => (t === "search" ? "manual" : "search"))}
@@ -273,7 +274,7 @@ export function CreateEventDialog({ open, onOpenChange }: CreateEventDialogProps
               <button
                 type="button"
                 onClick={() => setLocationMode(locationType)}
-                className="flex h-9 flex-1 items-center rounded-4xl border border-input bg-input/30 px-3 text-sm text-left transition-colors hover:bg-input/50"
+                className="flex h-9 min-w-0 flex-1 items-center overflow-hidden rounded-4xl border border-input bg-input/30 px-3 text-sm text-left transition-colors hover:bg-input/50"
               >
                 {location ? (
                   <span className="truncate">{location}</span>

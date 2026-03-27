@@ -495,7 +495,7 @@ export function EventForm({
                 <button
                   type="button"
                   onClick={() => setBeforeAddressMode(beforeAddressType)}
-                  className="flex h-9 flex-1 items-center rounded-4xl border border-input bg-input/30 px-3 text-sm transition-colors hover:bg-input/50"
+                  className="flex h-9 min-w-0 flex-1 items-center overflow-hidden rounded-4xl border border-input bg-input/30 px-3 text-sm transition-colors hover:bg-input/50"
                 >
                   {beforeAddress ? (
                     <span className="truncate">{beforeAddress}</span>
@@ -627,7 +627,7 @@ export function EventForm({
                 <button
                   type="button"
                   onClick={() => setAfterAddressMode(afterAddressType)}
-                  className="flex h-9 flex-1 items-center rounded-4xl border border-input bg-input/30 px-3 text-sm transition-colors hover:bg-input/50"
+                  className="flex h-9 min-w-0 flex-1 items-center overflow-hidden rounded-4xl border border-input bg-input/30 px-3 text-sm transition-colors hover:bg-input/50"
                 >
                   {afterAddress ? (
                     <span className="truncate">{afterAddress}</span>

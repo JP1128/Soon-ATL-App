@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
 
 interface ManualAddressOverlayProps {
@@ -60,11 +61,11 @@ function ManualAddressOverlay({
 
   if (!mounted) return null
 
-  return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+  return createPortal(
+    <div className="fixed inset-0 z-60" role="dialog" aria-modal="true">
       <div
         className={cn(
-          "absolute inset-0 bg-black/80 transition-opacity duration-100 supports-backdrop-filter:backdrop-blur-xs",
+          "absolute inset-0 bg-black/50 transition-opacity duration-100 supports-backdrop-filter:backdrop-blur-xs",
           visible ? "opacity-100" : "opacity-0"
         )}
         onClick={onClose}
@@ -109,7 +110,8 @@ function ManualAddressOverlay({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

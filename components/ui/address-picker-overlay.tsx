@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
 import { GoogleMap, useJsApiLoader, MarkerF } from "@react-google-maps/api"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -57,6 +58,7 @@ function AddressPickerOverlay({
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
     libraries: LIBRARIES,
+    version: "weekly",
   })
 
   // Mount/unmount animation
@@ -195,11 +197,11 @@ function AddressPickerOverlay({
 
   if (!mounted) return null
 
-  return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+  return createPortal(
+    <div className="fixed inset-0 z-60" role="dialog" aria-modal="true">
       <div
         className={cn(
-          "absolute inset-0 bg-black/80 transition-opacity duration-100 supports-backdrop-filter:backdrop-blur-xs",
+          "absolute inset-0 bg-black/50 transition-opacity duration-100 supports-backdrop-filter:backdrop-blur-xs",
           visible ? "opacity-100" : "opacity-0"
         )}
         onClick={onClose}
@@ -303,15 +305,15 @@ function AddressPickerOverlay({
           )}
 
           {/* Confirm / Cancel buttons */}
-          {selectedPlace && (
-            <div className="mt-4 flex gap-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 rounded-4xl border border-input bg-input/30 px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-input/50"
-              >
-                Cancel
-              </button>
+          <div className="mt-4 flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 rounded-4xl border border-input bg-input/30 px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-input/50"
+            >
+              Cancel
+            </button>
+            {selectedPlace && (
               <button
                 type="button"
                 onClick={handleConfirm}
@@ -319,11 +321,12 @@ function AddressPickerOverlay({
               >
                 Confirm
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

@@ -171,12 +171,12 @@ export function DraftEventEditor({ event }: DraftEventEditorProps): React.ReactE
           </div>
 
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-baseline gap-1.5">
+            <div className="flex items-baseline gap-1.5">
+              <div className="flex flex-1 items-baseline gap-1.5">
                 <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Date</Label>
                 <span className="text-xs text-muted-foreground">{dayLabel}</span>
               </div>
-              <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Time</Label>
+              <Label className="min-w-28 text-xs font-medium uppercase tracking-wider text-muted-foreground">Time</Label>
             </div>
             <div className="flex items-center gap-3">
               <button
@@ -189,7 +189,7 @@ export function DraftEventEditor({ event }: DraftEventEditorProps): React.ReactE
               <button
                 type="button"
                 onClick={() => setTimeOpen(true)}
-                className="flex h-9 items-center gap-1 rounded-4xl border border-input bg-input/30 px-3 text-sm tabular-nums transition-colors hover:bg-input/50"
+                className="flex h-9 min-w-28 items-center justify-center gap-1 rounded-4xl border border-input bg-input/30 px-3 text-sm tabular-nums transition-colors hover:bg-input/50"
               >
                 {hour || "–"}<span className="text-muted-foreground">:</span>{minute || "00"} {period}
               </button>
@@ -233,7 +233,7 @@ export function DraftEventEditor({ event }: DraftEventEditorProps): React.ReactE
               <button
                 type="button"
                 onClick={() => setLocationMode(locationType)}
-                className="flex h-9 flex-1 items-center rounded-4xl border border-input bg-input/30 px-3 text-sm text-left transition-colors hover:bg-input/50"
+                className="flex h-9 min-w-0 flex-1 items-center overflow-hidden rounded-4xl border border-input bg-input/30 px-3 text-sm text-left transition-colors hover:bg-input/50"
               >
                 {location ? (
                   <span className="truncate">{location}</span>

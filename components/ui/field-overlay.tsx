@@ -39,7 +39,7 @@ function FieldOverlay({ open, onClose, onConfirm, title, children, className }: 
   if (!mounted) return null
 
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-60" role="dialog" aria-modal="true">
       <div
         className={cn(
           "absolute inset-0 bg-black/80 transition-opacity duration-100 supports-backdrop-filter:backdrop-blur-xs",
