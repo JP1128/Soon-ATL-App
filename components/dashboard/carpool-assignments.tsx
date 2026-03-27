@@ -130,10 +130,20 @@ export function CarpoolAssignments({
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    checkScroll();
+
     el.addEventListener("scroll", checkScroll, { passive: true });
-    return () => el.removeEventListener("scroll", checkScroll);
-  }, [checkScroll]);
+
+    const ro = new ResizeObserver(checkScroll);
+    ro.observe(el);
+    for (const child of el.children) {
+      ro.observe(child);
+    }
+
+    return () => {
+      el.removeEventListener("scroll", checkScroll);
+      ro.disconnect();
+    };
+  }, [checkScroll, loading]);
 
   useEffect(() => {
     async function fetchData(): Promise<void> {
@@ -144,11 +154,9 @@ export function CarpoolAssignments({
         setCarpools(data.carpools);
       }
       setLoading(false);
-      // Recheck scroll after data loads
-      setTimeout(checkScroll, 100);
     }
     fetchData();
-  }, [eventId, checkScroll]);
+  }, [eventId]);
 
   const { drivers, riders, unassignedRiders, assignedRiderIds } = useMemo(() => {
     const roleField = leg === "before" ? "before_role" : "after_role";
@@ -267,7 +275,7 @@ export function CarpoolAssignments({
   }
 
   return (
-    <div className="flex h-dvh flex-col">
+    <div className="flex h-full flex-col">
       {/* Fixed header: title, toggles, stats, search */}
       <div className="flex-none space-y-5 pb-4">
         {/* Header + leg toggle */}
@@ -341,169 +349,183 @@ export function CarpoolAssignments({
         />
       </div>
 
-      {/* Scrollable list */}
+      {/* Top scroll indicator */}
       <div
-        ref={scrollRef}
-        className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-5 pb-28"
-        style={{
-          maskImage: `linear-gradient(to bottom, ${canScrollUp ? "transparent, black 2rem" : "black 0%"}, black calc(100% - 8rem), transparent)`,
-          WebkitMaskImage: `linear-gradient(to bottom, ${canScrollUp ? "transparent, black 2rem" : "black 0%"}, black calc(100% - 8rem), transparent)`,
-        }}
+        className={cn(
+          "flex-none flex justify-center h-5 items-center transition-opacity duration-200",
+          canScrollUp ? "opacity-100" : "opacity-0"
+        )}
       >
-      {listView === "drivers" ? (
-      /* Drivers list */
-      <div className="space-y-1.5">
-        {filteredDrivers.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No drivers found</p>
-        ) : (
-          filteredDrivers.map((driver) => {
-              const isExpanded = expandedDriver === driver.userId;
-            return (
-              <ScrollReveal key={driver.userId} scrollRoot={scrollRef}>
-              <div
-                className="rounded-lg border overflow-hidden"
-              >
-                  {/* Driver header (collapsed view) */}
-                  <button
-                    type="button"
-                    onClick={() => toggleDriver(driver.userId)}
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-secondary/30"
+        <span className="text-[10px] tracking-[0.25em] text-muted-foreground/50">•••</span>
+      </div>
+
+      {/* Scroll area — relative wrapper so bottom dot is absolute and doesn't steal height */}
+      <div className="relative flex-1 min-h-0">
+        <div
+          ref={scrollRef}
+          className="absolute inset-0 overflow-y-auto overflow-x-hidden overscroll-contain scrollbar-none"
+          style={{
+            maskImage: `linear-gradient(to bottom, ${canScrollUp ? "transparent, black 1.5rem" : "black 0%"}, black calc(100% - 7.5rem), transparent calc(100% - 6rem), transparent)`,
+            WebkitMaskImage: `linear-gradient(to bottom, ${canScrollUp ? "transparent, black 1.5rem" : "black 0%"}, black calc(100% - 7.5rem), transparent calc(100% - 6rem), transparent)`,
+          }}
+        >
+          <div className="space-y-1.5 pb-28">
+          {listView === "drivers" ? (
+            filteredDrivers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No drivers found</p>
+            ) : (
+              filteredDrivers.map((driver) => {
+                const isExpanded = expandedDriver === driver.userId;
+                return (
+                  <ScrollReveal key={driver.userId} scrollRoot={scrollRef}>
+                    <div className="rounded-lg border overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => toggleDriver(driver.userId)}
+                        className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-secondary/30"
+                      >
+                        <Avatar size="sm">
+                          {driver.profile.avatar_url && (
+                            <AvatarImage
+                              src={driver.profile.avatar_url}
+                              alt={driver.profile.full_name}
+                            />
+                          )}
+                          <AvatarFallback>
+                            {getInitials(driver.profile.full_name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-medium">
+                            {driver.profile.full_name}
+                          </p>
+                          <p className="truncate text-[11px] text-muted-foreground">
+                            {formatPhone(driver.profile.phone_number)}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <HugeiconsIcon
+                              icon={Car01Icon}
+                              className="size-3.5"
+                              strokeWidth={1.5}
+                            />
+                            {driver.assignedRiders.length}/{driver.availableSeats}
+                          </span>
+                          <HugeiconsIcon
+                            icon={ArrowDown01Icon}
+                            className={cn(
+                              "size-4 text-muted-foreground transition-transform duration-200",
+                              isExpanded && "rotate-180"
+                            )}
+                            strokeWidth={1.5}
+                          />
+                        </div>
+                      </button>
+
+                      <div
+                        className={cn(
+                          "grid transition-[grid-template-rows] duration-200 ease-out",
+                          isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                        )}
+                      >
+                        <div className="overflow-hidden">
+                          <div className="border-t bg-secondary/20 px-3 py-1.5">
+                            {driver.assignedRiders.length === 0 ? (
+                              <p className="py-1.5 text-[11px] text-muted-foreground">
+                                No riders assigned
+                              </p>
+                            ) : (
+                              <div className="divide-y divide-border/50">
+                                {driver.assignedRiders.map((rider) => (
+                                  <div
+                                    key={rider.userId}
+                                    className="flex items-center gap-2.5 py-1.5"
+                                  >
+                                    <Avatar size="sm">
+                                      {rider.profile.avatar_url && (
+                                        <AvatarImage
+                                          src={rider.profile.avatar_url}
+                                          alt={rider.profile.full_name}
+                                        />
+                                      )}
+                                      <AvatarFallback>
+                                        {getInitials(rider.profile.full_name)}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="truncate text-xs">
+                                        {rider.profile.full_name}
+                                      </p>
+                                      <p className="truncate text-[11px] text-muted-foreground">
+                                        {formatPhone(rider.profile.phone_number)}
+                                      </p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </ScrollReveal>
+                );
+              })
+            )
+          ) : (
+            filteredRiders.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No riders found</p>
+            ) : (
+              filteredRiders.map((rider) => (
+                <ScrollReveal key={rider.userId} scrollRoot={scrollRef}>
+                  <div
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-lg border px-3 py-2",
+                      !rider.assigned && "border-destructive/30 bg-destructive/5"
+                    )}
                   >
                     <Avatar size="sm">
-                      {driver.profile.avatar_url && (
+                      {rider.profile.avatar_url && (
                         <AvatarImage
-                          src={driver.profile.avatar_url}
-                          alt={driver.profile.full_name}
+                          src={rider.profile.avatar_url}
+                          alt={rider.profile.full_name}
                         />
                       )}
                       <AvatarFallback>
-                        {getInitials(driver.profile.full_name)}
+                        {getInitials(rider.profile.full_name)}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-medium">
-                        {driver.profile.full_name}
+                        {rider.profile.full_name}
                       </p>
                       <p className="truncate text-[11px] text-muted-foreground">
-                        {formatPhone(driver.profile.phone_number)}
+                        {formatPhone(rider.profile.phone_number)}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <HugeiconsIcon
-                          icon={Car01Icon}
-                          className="size-3.5"
-                          strokeWidth={1.5}
-                        />
-                        {driver.assignedRiders.length}/{driver.availableSeats}
+                    {!rider.assigned && (
+                      <span className="shrink-0 text-[10px] font-medium text-destructive">
+                        Unassigned
                       </span>
-                      <HugeiconsIcon
-                        icon={ArrowDown01Icon}
-                        className={cn(
-                          "size-4 text-muted-foreground transition-transform duration-200",
-                          isExpanded && "rotate-180"
-                        )}
-                        strokeWidth={1.5}
-                      />
-                    </div>
-                  </button>
-
-                  {/* Expanded rider list */}
-                  <div
-                    className={cn(
-                      "grid transition-[grid-template-rows] duration-200 ease-out",
-                      isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
                     )}
-                  >
-                    <div className="overflow-hidden">
-                      <div className="border-t bg-secondary/20 px-3 py-1.5">
-                        {driver.assignedRiders.length === 0 ? (
-                          <p className="py-1.5 text-[11px] text-muted-foreground">
-                            No riders assigned
-                          </p>
-                        ) : (
-                          <div className="divide-y divide-border/50">
-                            {driver.assignedRiders.map((rider) => (
-                              <div
-                                key={rider.userId}
-                                className="flex items-center gap-2.5 py-1.5"
-                              >
-                                <Avatar size="sm">
-                                  {rider.profile.avatar_url && (
-                                    <AvatarImage
-                                      src={rider.profile.avatar_url}
-                                      alt={rider.profile.full_name}
-                                    />
-                                  )}
-                                  <AvatarFallback>
-                                    {getInitials(rider.profile.full_name)}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-xs">
-                                    {rider.profile.full_name}
-                                  </p>
-                                  <p className="truncate text-[11px] text-muted-foreground">
-                                    {formatPhone(rider.profile.phone_number)}
-                                  </p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
                   </div>
-                </div>
                 </ScrollReveal>
-              );
-            })
+              ))
+            )
           )}
         </div>
-      ) : (
-      /* Riders list */
-      <div className="space-y-1.5">
-        {filteredRiders.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No riders found</p>
-        ) : (
-          filteredRiders.map((rider) => (
-            <ScrollReveal key={rider.userId} scrollRoot={scrollRef}>
-            <div
-              className={cn(
-                "flex items-center gap-2.5 rounded-lg border px-3 py-2",
-                !rider.assigned && "border-destructive/30 bg-destructive/5"
-              )}
-            >
-              <Avatar size="sm">
-                {rider.profile.avatar_url && (
-                  <AvatarImage
-                    src={rider.profile.avatar_url}
-                    alt={rider.profile.full_name}
-                  />
-                )}
-                <AvatarFallback>
-                  {getInitials(rider.profile.full_name)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium">
-                  {rider.profile.full_name}
-                </p>
-                <p className="truncate text-[11px] text-muted-foreground">
-                  {formatPhone(rider.profile.phone_number)}
-                </p>
-              </div>
-              {!rider.assigned && (
-                <span className="shrink-0 text-[10px] font-medium text-destructive">
-                  Unassigned
-                </span>
-              )}
-            </div>
-            </ScrollReveal>
-          ))
-        )}
-      </div>
-      )}
+        </div>
+
+        {/* Bottom scroll indicator — absolute so it doesn't steal scroll height */}
+        <div
+          className={cn(
+            "absolute inset-x-0 bottom-24 z-10 flex justify-center pointer-events-none transition-opacity duration-200",
+            canScrollDown ? "opacity-100" : "opacity-0"
+          )}
+        >
+          <span className="text-[10px] tracking-[0.25em] text-muted-foreground/50">•••</span>
+        </div>
       </div>
     </div>
   );
