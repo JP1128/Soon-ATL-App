@@ -3,7 +3,7 @@
 import * as React from "react"
 import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
-import { GoogleMap, useJsApiLoader, MarkerF } from "@react-google-maps/api"
+import { GoogleMap, useJsApiLoader } from "@react-google-maps/api"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Search01Icon,
@@ -54,6 +54,8 @@ function AddressPickerOverlay({
   const searchInputRef = React.useRef<HTMLInputElement>(null)
   const sessionTokenRef = React.useRef<google.maps.places.AutocompleteSessionToken | null>(null)
   const geocoderRef = React.useRef<google.maps.Geocoder | null>(null)
+  const mapRef = React.useRef<google.maps.Map | null>(null)
+  const isDraggingRef = React.useRef(false)
 
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
@@ -171,10 +173,13 @@ function AddressPickerOverlay({
     }
   }
 
-  function handleMarkerDragEnd(e: google.maps.MapMouseEvent): void {
-    if (!e.latLng) return
-    const lat = e.latLng.lat()
-    const lng = e.latLng.lng()
+  function handleMapIdle(): void {
+    if (!mapRef.current || !isDraggingRef.current) return
+    isDraggingRef.current = false
+    const center = mapRef.current.getCenter()
+    if (!center) return
+    const lat = center.lat()
+    const lng = center.lng()
     setMarkerPos({ lat, lng })
 
     geocoderRef.current?.geocode({ location: { lat, lng } }, (results, status) => {
@@ -276,30 +281,45 @@ function AddressPickerOverlay({
           {/* Map after selection */}
           {selectedPlace && markerPos && isLoaded && (
             <div className="mt-3">
-              <div className="overflow-hidden rounded-2xl border border-border">
+              <div className="relative overflow-hidden rounded-2xl border border-border">
                 <GoogleMap
                   mapContainerStyle={{ width: "100%", height: "200px" }}
                   center={markerPos}
                   zoom={16}
+                  onLoad={(map) => { mapRef.current = map }}
+                  onDragStart={() => { isDraggingRef.current = true }}
+                  onIdle={handleMapIdle}
                   options={{
                     disableDefaultUI: true,
-                    zoomControl: true,
+                    zoomControl: false,
                     gestureHandling: "greedy",
                     styles: [
+                      { elementType: "geometry", stylers: [{ color: "#f5f5f5" }] },
+                      { elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
+                      { elementType: "labels.text.stroke", stylers: [{ color: "#f5f5f5" }] },
+                      { featureType: "administrative.land_parcel", elementType: "labels.text.fill", stylers: [{ color: "#bdbdbd" }] },
                       { featureType: "poi", stylers: [{ visibility: "off" }] },
+                      { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
+                      { featureType: "road.arterial", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
+                      { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#dadada" }] },
+                      { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
+                      { featureType: "road.local", elementType: "labels.text.fill", stylers: [{ color: "#9e9e9e" }] },
                       { featureType: "transit", stylers: [{ visibility: "off" }] },
+                      { featureType: "water", elementType: "geometry", stylers: [{ color: "#c9c9c9" }] },
+                      { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#9e9e9e" }] },
                     ],
                   }}
-                >
-                  <MarkerF
-                    position={markerPos}
-                    draggable
-                    onDragEnd={handleMarkerDragEnd}
-                  />
-                </GoogleMap>
+                />
+                {/* Fixed center pin */}
+                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 pointer-events-none z-10 flex flex-col items-center" style={{ transform: "translate(-50%, -100%)" }}>
+                  <div className="rounded-full bg-foreground p-1.5 shadow-lg ring-2 ring-background">
+                    <div className="size-2 rounded-full bg-background" />
+                  </div>
+                  <div className="h-3 w-0.5 bg-foreground" />
+                </div>
               </div>
               <p className="mt-2 text-xs text-muted-foreground text-center">
-                Drag the pin to adjust location
+                Move the map to adjust location
               </p>
             </div>
           )}

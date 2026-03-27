@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -13,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { TextInputOverlay } from "@/components/ui/text-input-overlay";
 import type { Profile, ResponseRole, University } from "@/types/database";
 
 interface ProfileFormProps {
@@ -64,16 +64,16 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const phoneInputRef = useRef<HTMLInputElement>(null);
+  const [nameOpen, setNameOpen] = useState(false);
+  const [phoneOpen, setPhoneOpen] = useState(false);
   const needsPhone = !profile.phone_number;
 
   const phoneValid = isValidPhoneNumber(phoneNumber);
 
-  // Auto-focus and scroll to phone field when it needs attention
+  // Auto-open phone overlay when it needs attention
   useEffect(() => {
-    if (needsPhone && phoneInputRef.current) {
-      phoneInputRef.current.focus();
-      phoneInputRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (needsPhone) {
+      setPhoneOpen(true);
     }
   }, [needsPhone]);
 
@@ -129,25 +129,52 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="full_name" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Full Name</Label>
-            <Input
-              id="full_name"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
+            <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Full Name</Label>
+            <button
+              type="button"
+              onClick={() => setNameOpen(true)}
+              className="flex h-9 w-full items-center rounded-4xl border border-input bg-input/30 px-3 text-base text-left transition-colors hover:bg-input/50 md:text-sm"
+            >
+              {fullName ? (
+                <span className="truncate">{fullName}</span>
+              ) : (
+                <span className="text-muted-foreground">First Last</span>
+              )}
+            </button>
+            <TextInputOverlay
+              open={nameOpen}
+              onClose={() => setNameOpen(false)}
+              onConfirm={(value) => setFullName(value)}
+              initialValue={fullName}
+              title="Full Name"
               placeholder="First Last"
-              required
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="phone_number" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Phone Number</Label>
-            <Input
-              ref={phoneInputRef}
-              id="phone_number"
-              type="tel"
-              value={phoneNumber}
-              onChange={(e) => setPhoneNumber(formatPhoneNumber(e.target.value))}
+            <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Phone Number</Label>
+            <button
+              type="button"
+              onClick={() => setPhoneOpen(true)}
+              className={`flex h-9 w-full items-center rounded-4xl border bg-input/30 px-3 text-base text-left transition-colors hover:bg-input/50 md:text-sm ${
+                needsPhone && !phoneNumber ? "border-destructive" : "border-input"
+              }`}
+            >
+              {phoneNumber ? (
+                <span className="truncate">{phoneNumber}</span>
+              ) : (
+                <span className="text-muted-foreground">(555) 123-4567</span>
+              )}
+            </button>
+            <TextInputOverlay
+              open={phoneOpen}
+              onClose={() => setPhoneOpen(false)}
+              onConfirm={(value) => setPhoneNumber(formatPhoneNumber(value))}
+              initialValue={phoneNumber}
+              title="Phone Number"
               placeholder="(555) 123-4567"
-              className={needsPhone && !phoneNumber ? "animate-[attention-pulse_1.5s_ease-in-out_3] border-destructive" : ""}
+              type="tel"
+              inputMode="tel"
+              formatValue={formatPhoneNumber}
             />
             {needsPhone && !phoneNumber && (
               <p className="text-xs text-destructive">Phone number is required</p>

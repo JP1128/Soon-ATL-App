@@ -3,11 +3,11 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { TimeWheelPicker } from "@/components/ui/time-wheel-picker";
 import { AddressPickerOverlay } from "@/components/ui/address-picker-overlay";
 import type { AddressResult } from "@/components/ui/address-picker-overlay";
 import { ManualAddressOverlay } from "@/components/ui/manual-address-overlay";
+import { TextInputOverlay } from "@/components/ui/text-input-overlay";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Car01Icon,
@@ -119,6 +119,7 @@ export function EventForm({
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [timeOpen, setTimeOpen] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
 
   const isAttendingOnly = !beforeRole && !afterRole;
 
@@ -458,7 +459,7 @@ export function EventForm({
                 onClick={() => setTimeOpen(true)}
                 className="flex h-9 w-full items-center rounded-4xl border border-input bg-input/30 px-3 text-base tabular-nums transition-colors hover:bg-input/50"
               >
-                {timeHour || "–"}<span className="text-muted-foreground mx-0.5">:</span>{timeMinute || "00"} {timePeriod || "PM"}
+                {timeHour || "––"}<span className="text-muted-foreground mx-0.5">:</span>{timeMinute || "––"} {timePeriod || "PM"}
               </button>
               <TimeWheelPicker
                 open={timeOpen}
@@ -737,13 +738,28 @@ export function EventForm({
           </div>
 
           <div className="space-y-2.5">
-            <Label htmlFor="note">Note</Label>
-            <Textarea
-              id="note"
+            <Label>Note</Label>
+            <button
+              type="button"
+              onClick={() => setNoteOpen(true)}
+              className="flex min-h-9 w-full items-start rounded-4xl border border-input bg-input/30 px-3 py-2 text-sm text-left transition-colors hover:bg-input/50"
+            >
+              {note ? (
+                <span className="line-clamp-2">{note}</span>
+              ) : (
+                <span className="text-muted-foreground">
+                  e.g. I&apos;ll be at the main entrance, bringing a large bag, etc.
+                </span>
+              )}
+            </button>
+            <TextInputOverlay
+              open={noteOpen}
+              onClose={() => setNoteOpen(false)}
+              onConfirm={(value) => setNote(value)}
+              initialValue={note}
+              title="Note"
               placeholder="e.g. I'll be at the main entrance, bringing a large bag, etc."
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={3}
+              multiline
             />
           </div>
 
