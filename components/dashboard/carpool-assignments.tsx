@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { useJsApiLoader } from "@react-google-maps/api";
 import { Input } from "@/components/ui/input";
 import {
   Avatar,
@@ -9,7 +10,7 @@ import {
   AvatarFallback,
 } from "@/components/ui/avatar";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowDown01Icon, Car01Icon, SteeringIcon, UserGroupIcon, UserAdd01Icon, UserRemove01Icon, SentIcon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon, Car01Icon, SteeringIcon, UserGroupIcon, UserAdd01Icon, UserRemove01Icon, SentIcon, MapsSearchIcon, TextIcon, Clock01Icon, AlertCircleIcon } from "@hugeicons/core-free-icons";
 import { cn, formatPhoneNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -28,6 +29,10 @@ interface ResponseRow {
   after_role: string | null;
   available_seats: number | null;
   pickup_address: string | null;
+  pickup_lat: number | null;
+  pickup_lng: number | null;
+  departure_time: string | null;
+  note: string | null;
   profiles: ProfileData;
 }
 
@@ -46,12 +51,20 @@ interface DriverEntry {
   userId: string;
   profile: ProfileData;
   availableSeats: number;
+  pickupAddress: string | null;
+  pickupLat: number | null;
+  pickupLng: number | null;
+  departureTime: string | null;
+  note: string | null;
   assignedRiders: RiderEntry[];
 }
 
 interface RiderEntry {
   userId: string;
   profile: ProfileData;
+  departureTime: string | null;
+  pickupAddress: string | null;
+  note: string | null;
 }
 
 interface CarpoolAssignmentsProps {
@@ -71,6 +84,17 @@ function getInitials(name: string): string {
 function formatPhone(phone: string | null): string {
   if (!phone) return "No phone";
   return formatPhoneNumber(phone);
+}
+
+function formatDepartureTime(time: string): string {
+  const [h, m] = time.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const hour12 = h % 12 || 12;
+  return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+function stripStateZip(address: string): string {
+  return address.replace(/,?\s*[A-Z]{2}\s*\d{5}(-\d{4})?,?\s*(USA|US)?$/i, "").replace(/,\s*$/, "");
 }
 
 function ScrollReveal({ children, className, scrollRoot }: { children: React.ReactNode; className?: string; scrollRoot: React.RefObject<HTMLDivElement | null> }): React.ReactElement {
@@ -109,6 +133,8 @@ function ScrollReveal({ children, className, scrollRoot }: { children: React.Rea
   );
 }
 
+import { GOOGLE_MAPS_LIBRARIES } from "@/lib/google-maps/constants";
+
 export function CarpoolAssignments({
   eventId,
   carpoolsSentAt,
@@ -120,6 +146,9 @@ export function CarpoolAssignments({
   const [listView, setListView] = useState<"drivers" | "riders">("drivers");
   const [search, setSearch] = useState("");
   const [expandedDriver, setExpandedDriver] = useState<string | null>(null);
+  const [expandedOffset, setExpandedOffset] = useState(0);
+  const [animatingUp, setAnimatingUp] = useState(false);
+  const driverCardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [addRiderTarget, setAddRiderTarget] = useState<{ driverId: string; driverName: string; availableSeats: number; currentRiderCount: number } | null>(null);
   const [showOnlyUnassigned, setShowOnlyUnassigned] = useState(true);
   const [riderDetailTarget, setRiderDetailTarget] = useState<{
@@ -127,6 +156,7 @@ export function CarpoolAssignments({
     currentDriver: { userId: string; name: string } | null;
   } | null>(null);
   const [rideHistory, setRideHistory] = useState<Map<string, number>>(new Map());
+  const [placeNames, setPlaceNames] = useState<Map<string, string>>(new Map());
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollDown, setCanScrollDown] = useState(false);
   const [canScrollUp, setCanScrollUp] = useState(false);
@@ -172,6 +202,74 @@ export function CarpoolAssignments({
     fetchData();
   }, [eventId]);
 
+  // Load Google Maps JS API for place name resolution
+  const { isLoaded: mapsLoaded } = useJsApiLoader({
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
+    libraries: GOOGLE_MAPS_LIBRARIES,
+    version: "weekly",
+  });
+
+  // Resolve place names for driver pickup locations
+  useEffect(() => {
+    if (!mapsLoaded || responses.length === 0) return;
+
+    const driversWithCoords = responses.filter(
+      (r) => (r.before_role === "driver" || r.after_role === "driver") && r.pickup_lat && r.pickup_lng
+    );
+
+    if (driversWithCoords.length === 0) return;
+
+    const geocoder = new google.maps.Geocoder();
+    let cancelled = false;
+
+    async function resolveNames(): Promise<void> {
+      const newNames = new Map<string, string>();
+
+      await Promise.all(
+        driversWithCoords.map(async (driver) => {
+          // Skip if already resolved
+          if (placeNames.has(driver.user_id)) return;
+
+          try {
+            const result = await geocoder.geocode({
+              location: { lat: driver.pickup_lat!, lng: driver.pickup_lng! },
+            });
+
+            if (cancelled) return;
+
+            // Look for a result with establishment or point_of_interest type
+            const establishment = result.results.find((r) =>
+              r.types.some((t) =>
+                ["establishment", "point_of_interest", "food", "store", "restaurant", "cafe", "university", "school", "church", "park", "stadium", "airport"].includes(t)
+              )
+            );
+
+            if (establishment) {
+              // Extract the place name (first address component, or formatted address before the first comma)
+              const name = establishment.formatted_address.split(",")[0];
+              newNames.set(driver.user_id, name);
+            }
+          } catch {
+            // Ignore geocoding errors
+          }
+        })
+      );
+
+      if (!cancelled && newNames.size > 0) {
+        setPlaceNames((prev) => {
+          const updated = new Map(prev);
+          for (const [k, v] of newNames) {
+            updated.set(k, v);
+          }
+          return updated;
+        });
+      }
+    }
+
+    resolveNames();
+    return () => { cancelled = true; };
+  }, [mapsLoaded, responses, placeNames]);
+
   const { drivers, riders, unassignedRiders, assignedRiderIds } = useMemo(() => {
     const roleField = leg === "before" ? "before_role" : "after_role";
 
@@ -196,6 +294,12 @@ export function CarpoolAssignments({
       assignmentMap.set(c.driver_id, riderIds);
     }
 
+    // Build response lookup for rider details
+    const responseMap = new Map<string, ResponseRow>();
+    for (const r of responses) {
+      responseMap.set(r.user_id, r);
+    }
+
     // Build driver entries
     const driverEntries: DriverEntry[] = legDrivers.map((d) => {
       const assigned = assignmentMap.get(d.user_id) ?? [];
@@ -204,20 +308,31 @@ export function CarpoolAssignments({
           // Only include riders who are actually riders in this leg
           return legRiders.some((r) => r.user_id === riderId);
         })
-        .map((riderId) => ({
-          userId: riderId,
-          profile: profileMap.get(riderId) ?? {
-            id: riderId,
-            full_name: "Unknown",
-            avatar_url: null,
-            phone_number: null,
-          },
-        }));
+        .map((riderId) => {
+          const resp = responseMap.get(riderId);
+          return {
+            userId: riderId,
+            profile: profileMap.get(riderId) ?? {
+              id: riderId,
+              full_name: "Unknown",
+              avatar_url: null,
+              phone_number: null,
+            },
+            departureTime: resp?.departure_time ?? null,
+            pickupAddress: resp?.pickup_address ?? null,
+            note: resp?.note ?? null,
+          };
+        });
 
       return {
         userId: d.user_id,
         profile: d.profiles,
         availableSeats: d.available_seats ?? 0,
+        pickupAddress: d.pickup_address,
+        pickupLat: d.pickup_lat,
+        pickupLng: d.pickup_lng,
+        departureTime: d.departure_time,
+        note: d.note,
         assignedRiders,
       };
     });
@@ -231,6 +346,9 @@ export function CarpoolAssignments({
       .map((r) => ({
         userId: r.user_id,
         profile: r.profiles,
+        departureTime: r.departure_time,
+        pickupAddress: r.pickup_address,
+        note: r.note,
       }));
 
     return {
@@ -309,7 +427,32 @@ export function CarpoolAssignments({
   }, [allRiderEntries, lowerSearch]);
 
   function toggleDriver(userId: string): void {
-    setExpandedDriver((prev) => (prev === userId ? null : userId));
+    setExpandedDriver((prev) => {
+      const next = prev === userId ? null : userId;
+      if (next) {
+        // Capture the card's current offset relative to scroll container
+        const cardEl = driverCardRefs.current.get(userId);
+        const scrollEl = scrollRef.current;
+        if (cardEl && scrollEl) {
+          const offset = cardEl.offsetTop - scrollEl.scrollTop;
+          setExpandedOffset(offset);
+          setAnimatingUp(true);
+        }
+        if (scrollEl) {
+          scrollEl.scrollTop = 0;
+        }
+        // Next frame: animate to translateY(0)
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setAnimatingUp(false);
+          });
+        });
+      } else {
+        setExpandedOffset(0);
+        setAnimatingUp(false);
+      }
+      return next;
+    });
     // Recheck scroll after expand animation
     setTimeout(checkScroll, 250);
   }
@@ -586,23 +729,49 @@ export function CarpoolAssignments({
       <div className="relative flex-1 min-h-0">
         <div
           ref={scrollRef}
-          className="absolute inset-0 overflow-y-auto overflow-x-hidden overscroll-contain scrollbar-none"
-          style={{
-            maskImage: `linear-gradient(to bottom, ${canScrollUp ? "transparent, black 1.5rem" : "black 0%"}, black calc(100% - 7.5rem), transparent calc(100% - 6rem), transparent)`,
-            WebkitMaskImage: `linear-gradient(to bottom, ${canScrollUp ? "transparent, black 1.5rem" : "black 0%"}, black calc(100% - 7.5rem), transparent calc(100% - 6rem), transparent)`,
-          }}
+          className={cn(
+            "absolute inset-0 overflow-x-hidden overscroll-contain scrollbar-none",
+            expandedDriver && listView === "drivers" ? "overflow-hidden" : "overflow-y-auto"
+          )}
+          style={
+            expandedDriver && listView === "drivers"
+              ? undefined
+              : {
+                  maskImage: `linear-gradient(to bottom, ${canScrollUp ? "transparent, black 1.5rem" : "black 0%"}, black calc(100% - 7.5rem), transparent calc(100% - 6rem), transparent)`,
+                  WebkitMaskImage: `linear-gradient(to bottom, ${canScrollUp ? "transparent, black 1.5rem" : "black 0%"}, black calc(100% - 7.5rem), transparent calc(100% - 6rem), transparent)`,
+                }
+          }
         >
-          <div className="space-y-1.5 pb-28">
+          <div className={cn("space-y-1.5 pb-28", expandedDriver && listView === "drivers" && "h-full space-y-0!")}>
           {listView === "drivers" ? (
             filteredDrivers.length === 0 ? (
               <p className="text-sm text-muted-foreground">No drivers found</p>
             ) : (
               filteredDrivers.map((driver) => {
                 const isExpanded = expandedDriver === driver.userId;
+                const isHidden = expandedDriver !== null && !isExpanded;
                 const isFull = driver.availableSeats > 0 && driver.assignedRiders.length >= driver.availableSeats;
                 return (
-                  <ScrollReveal key={driver.userId} scrollRoot={scrollRef}>
-                    <div className="rounded-lg border overflow-hidden">
+                  <ScrollReveal key={driver.userId} scrollRoot={scrollRef} className={cn(isExpanded && "h-full", isHidden && "h-0 m-0! p-0! overflow-hidden")}>
+                    <div
+                      ref={(el) => {
+                        if (el) driverCardRefs.current.set(driver.userId, el);
+                        else driverCardRefs.current.delete(driver.userId);
+                      }}
+                      className={cn(
+                        "rounded-lg border overflow-hidden transition-all duration-200 ease-out",
+                        isExpanded && "h-full flex flex-col overflow-y-auto",
+                        isHidden && "opacity-0 h-0 border-transparent m-0! p-0! pointer-events-none",
+                      )}
+                      style={
+                        isExpanded
+                          ? {
+                              transform: animatingUp ? `translateY(${expandedOffset}px)` : "translateY(0)",
+                              transition: "transform 250ms ease-out, height 200ms ease-out",
+                            }
+                          : undefined
+                      }
+                    >
                       <button
                         type="button"
                         onClick={() => toggleDriver(driver.userId)}
@@ -625,15 +794,26 @@ export function CarpoolAssignments({
                           </p>
                           <p className="truncate text-[11px] text-muted-foreground">
                             {formatPhone(driver.profile.phone_number)}
+                            {(() => {
+                              const earliest = driver.assignedRiders
+                                .filter((r) => r.departureTime)
+                                .map((r) => r.departureTime!)
+                                .sort()[0];
+                              if (!earliest) return null;
+                              const hasConflict = driver.departureTime && earliest > driver.departureTime;
+                              return (
+                                <>
+                                  <span className="mx-1">·</span>
+                                  <span className={cn(hasConflict && "text-destructive font-medium")}>
+                                    {hasConflict && <HugeiconsIcon icon={AlertCircleIcon} className="size-3 inline-block align-[-2px] mr-0.5" strokeWidth={2} />}Pickup {formatDepartureTime(earliest)}
+                                  </span>
+                                </>
+                              );
+                            })()}
                           </p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          {isFull && (
-                            <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">
-                              Full
-                            </span>
-                          )}
-                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <span className={cn("flex items-center gap-1 text-xs", isFull ? "text-destructive" : "text-muted-foreground")}>
                             <HugeiconsIcon
                               icon={Car01Icon}
                               className="size-3.5"
@@ -655,11 +835,59 @@ export function CarpoolAssignments({
                       <div
                         className={cn(
                           "grid transition-[grid-template-rows] duration-200 ease-out",
-                          isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                          isExpanded ? "grid-rows-[1fr] flex-1" : "grid-rows-[0fr]"
                         )}
                       >
-                        <div className="overflow-hidden">
-                          <div className="border-t bg-secondary/20 px-3 py-1.5">
+                        <div className={cn("overflow-hidden", isExpanded && "flex flex-col")}>
+                          <div className={cn("border-t bg-secondary/20 px-3 py-2", isExpanded && "flex-1")}>
+                            {/* Driver details */}
+                            {(driver.pickupAddress || driver.departureTime || driver.note) && (
+                              <div className="space-y-1.5 pb-2 mb-1.5 border-b border-border/50">
+                                {driver.pickupAddress && (
+                                  <div className="flex items-start gap-1.5">
+                                    <HugeiconsIcon icon={MapsSearchIcon} className="size-3.5 text-muted-foreground mt-0.5 shrink-0" strokeWidth={1.5} />
+                                    <div className="min-w-0">
+                                      {placeNames.get(driver.userId) && (
+                                        <p className="text-xs font-medium leading-tight">{placeNames.get(driver.userId)}</p>
+                                      )}
+                                      <p className={cn(
+                                        "text-[11px] text-muted-foreground leading-tight",
+                                        placeNames.get(driver.userId) && "mt-0.5"
+                                      )}>{stripStateZip(driver.pickupAddress)}</p>
+                                    </div>
+                                  </div>
+                                )}
+                                {driver.departureTime && (
+                                  <div className="flex items-center gap-1.5">
+                                    <HugeiconsIcon icon={Clock01Icon} className="size-3.5 text-muted-foreground shrink-0" strokeWidth={1.5} />
+                                    <p className="text-[11px] text-muted-foreground">Latest departure <span className="font-medium text-foreground">{formatDepartureTime(driver.departureTime)}</span></p>
+                                  </div>
+                                )}
+                                {driver.note && (
+                                  <div className="flex items-start gap-1.5">
+                                    <HugeiconsIcon icon={TextIcon} className="size-3.5 text-muted-foreground mt-0.5 shrink-0" strokeWidth={1.5} />
+                                    <p className="text-[11px] text-muted-foreground leading-tight italic">{driver.note}</p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {driver.assignedRiders.length > 0 && (() => {
+                              const riderTimes = driver.assignedRiders
+                                .filter((r) => r.departureTime)
+                                .map((r) => r.departureTime!);
+                              if (riderTimes.length === 0) return null;
+                              const earliest = riderTimes.sort()[0];
+                              const hasConflict = driver.departureTime && earliest > driver.departureTime;
+                              return (
+                                <div className="flex items-center gap-1.5 pb-1.5">
+                                  <HugeiconsIcon icon={hasConflict ? AlertCircleIcon : Clock01Icon} className={cn("size-3.5 shrink-0", hasConflict ? "text-destructive" : "text-muted-foreground")} strokeWidth={1.5} />
+                                  <p className={cn("text-[11px]", hasConflict ? "text-destructive" : "text-muted-foreground")}>
+                                    Pickup <span className={cn("font-medium", hasConflict ? "text-destructive" : "text-foreground")}>{formatDepartureTime(earliest)}</span>
+                                    {hasConflict && <> · departs {formatDepartureTime(driver.departureTime!)}</>}
+                                  </p>
+                                </div>
+                              );
+                            })()}
                             {driver.assignedRiders.length === 0 ? (
                               <p className="py-1.5 text-[11px] text-muted-foreground">
                                 No riders assigned
@@ -696,7 +924,26 @@ export function CarpoolAssignments({
                                       </p>
                                       <p className="truncate text-[11px] text-muted-foreground">
                                         {formatPhone(rider.profile.phone_number)}
+                                        {rider.departureTime && (
+                                          <>
+                                            <span className="mx-0.5">·</span>
+                                            <span className={cn(driver.departureTime && rider.departureTime > driver.departureTime && "text-destructive font-medium")}>
+                                              {driver.departureTime && rider.departureTime > driver.departureTime && <HugeiconsIcon icon={AlertCircleIcon} className="size-3 inline-block align-[-2px] mr-0.5" strokeWidth={2} />}
+                                              {formatDepartureTime(rider.departureTime)}
+                                            </span>
+                                          </>
+                                        )}
                                       </p>
+                                      {rider.pickupAddress && (
+                                        <p className="truncate text-[11px] text-muted-foreground">
+                                          {stripStateZip(rider.pickupAddress)}
+                                        </p>
+                                      )}
+                                      {rider.note && (
+                                        <p className="truncate text-[11px] text-muted-foreground italic">
+                                          {rider.note}
+                                        </p>
+                                      )}
                                     </div>
                                   </button>
                                 ))}
@@ -735,7 +982,7 @@ export function CarpoolAssignments({
                       type="button"
                       onClick={() => {
                         setRiderDetailTarget({
-                          rider: { userId: rider.userId, profile: rider.profile },
+                          rider: { userId: rider.userId, profile: rider.profile, departureTime: null, pickupAddress: null, note: null },
                           currentDriver: assignedDriver
                             ? { userId: assignedDriver.driverId, name: assignedDriver.driverName }
                             : null,

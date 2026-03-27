@@ -11,8 +11,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { createClient } from "@/lib/supabase/client"
 import type { University } from "@/types/database"
-
-const LIBRARIES: ("places")[] = ["places"]
+import { GOOGLE_MAPS_LIBRARIES } from "@/lib/google-maps/constants"
 const DEFAULT_CENTER = { lat: 33.749, lng: -84.388 } // Atlanta
 
 const UNIVERSITY_COORDINATES: Record<Exclude<University, "Other">, { lat: number; lng: number }> = {
@@ -71,7 +70,7 @@ function AddressPickerOverlay({
 
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
-    libraries: LIBRARIES,
+    libraries: GOOGLE_MAPS_LIBRARIES,
     version: "weekly",
   })
 

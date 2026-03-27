@@ -23,7 +23,7 @@ export async function GET(
   const { data: responses, error: responsesError } = await supabase
     .from("responses")
     .select(
-      "id, user_id, role, before_role, after_role, available_seats, pickup_address, profiles:user_id(id, full_name, avatar_url, phone_number)"
+      "id, user_id, role, before_role, after_role, available_seats, pickup_address, pickup_lat, pickup_lng, departure_time, note, profiles:user_id(id, full_name, avatar_url, phone_number)"
     )
     .eq("event_id", eventId) as {
     data: Array<{
@@ -34,6 +34,10 @@ export async function GET(
       after_role: string | null;
       available_seats: number | null;
       pickup_address: string | null;
+      pickup_lat: number | null;
+      pickup_lng: number | null;
+      departure_time: string | null;
+      note: string | null;
       profiles: {
         id: string;
         full_name: string;

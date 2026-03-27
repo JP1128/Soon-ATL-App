@@ -147,6 +147,7 @@ async function main(): Promise<void> {
       role = "rider";
       beforeRole = "rider";
       afterRole = "rider";
+      departureTime = pick(DEPARTURE_TIMES);
       if (Math.random() > 0.8) note = "Prefer to be picked up close to departure time";
     } else {
       role = "attending";
