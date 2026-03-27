@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/avatar";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowDown01Icon, Car01Icon, SteeringIcon, UserGroupIcon, UserAdd01Icon, UserRemove01Icon } from "@hugeicons/core-free-icons";
-import { cn } from "@/lib/utils";
+import { cn, formatPhoneNumber } from "@/lib/utils";
 
 interface ProfileData {
   id: string;
@@ -68,7 +68,7 @@ function getInitials(name: string): string {
 
 function formatPhone(phone: string | null): string {
   if (!phone) return "No phone";
-  return phone;
+  return formatPhoneNumber(phone);
 }
 
 function ScrollReveal({ children, className, scrollRoot }: { children: React.ReactNode; className?: string; scrollRoot: React.RefObject<HTMLDivElement | null> }): React.ReactElement {
@@ -243,7 +243,12 @@ export function CarpoolAssignments({
       userId: r.user_id,
       profile: r.profiles,
       assigned: assignedRiderIds.has(r.user_id),
-    }));
+    })).sort((a, b) => {
+      // Unassigned first
+      if (a.assigned !== b.assigned) return a.assigned ? 1 : -1;
+      // Then alphabetically by first name
+      return a.profile.full_name.localeCompare(b.profile.full_name);
+    });
   }, [responses, leg, assignedRiderIds]);
 
   // Map rider -> assigned driver for the overlay
@@ -517,6 +522,11 @@ export function CarpoolAssignments({
           >
             <HugeiconsIcon icon={UserGroupIcon} className="size-4" strokeWidth={1.5} />
             Riders ({riders.length})
+            {unassignedRiders.length > 0 && (
+              <span className="rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
+                {unassignedRiders.length}
+              </span>
+            )}
           </button>
         </div>
 
@@ -555,6 +565,7 @@ export function CarpoolAssignments({
             ) : (
               filteredDrivers.map((driver) => {
                 const isExpanded = expandedDriver === driver.userId;
+                const isFull = driver.availableSeats > 0 && driver.assignedRiders.length >= driver.availableSeats;
                 return (
                   <ScrollReveal key={driver.userId} scrollRoot={scrollRef}>
                     <div className="rounded-lg border overflow-hidden">
@@ -583,6 +594,11 @@ export function CarpoolAssignments({
                           </p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
+                          {isFull && (
+                            <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">
+                              Full
+                            </span>
+                          )}
                           <span className="flex items-center gap-1 text-xs text-muted-foreground">
                             <HugeiconsIcon
                               icon={Car01Icon}
@@ -1025,6 +1041,13 @@ function RiderDetailOverlay({
     ? drivers.filter((d) => d.userId !== currentDriver.userId)
     : drivers;
 
+  const selectedDriver = selectedDriverId
+    ? availableDrivers.find((d) => d.userId === selectedDriverId)
+    : null;
+  const isSelectedDriverFull = selectedDriver
+    ? selectedDriver.assignedRiders.length >= selectedDriver.availableSeats && selectedDriver.availableSeats > 0
+    : false;
+
   function handleDriverTap(driverId: string): void {
     setSelectedDriverId((prev) => (prev === driverId ? null : driverId));
     setReplaceRiderId(null);
@@ -1091,11 +1114,11 @@ function RiderDetailOverlay({
           </p>
 
           {/* Assign / Reassign section */}
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+          <p className={cn("text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 transition-opacity duration-200", removeMode && "opacity-40")}>
             {currentDriver ? "Reassign to" : "Assign to"}
           </p>
 
-          <div className="max-h-[50vh] overflow-y-auto -mx-2 px-2 py-1 space-y-1 scrollbar-none">
+          <div className={cn("max-h-[50vh] overflow-y-auto -mx-2 px-2 py-1 space-y-1 scrollbar-none transition-opacity duration-200", removeMode && "opacity-40 pointer-events-none")}>
             {availableDrivers.length === 0 ? (
               <p className="py-4 text-center text-xs text-muted-foreground">
                 No other drivers available
@@ -1210,7 +1233,7 @@ function RiderDetailOverlay({
             </button>
             <button
               type="button"
-              disabled={!selectedDriverId && !removeMode}
+              disabled={!removeMode && (!selectedDriverId || (isSelectedDriverFull && !replaceRiderId))}
               onClick={() => {
                 if (rider) {
                   if (removeMode) {
@@ -1229,7 +1252,7 @@ function RiderDetailOverlay({
                 "flex-1 rounded-4xl px-4 py-2.5 text-sm font-medium transition-colors",
                 removeMode
                   ? "border border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20"
-                  : selectedDriverId
+                  : selectedDriverId && !(isSelectedDriverFull && !replaceRiderId)
                     ? "bg-primary text-primary-foreground hover:bg-primary/90"
                     : "border border-input bg-input/30 text-muted-foreground cursor-not-allowed"
               )}

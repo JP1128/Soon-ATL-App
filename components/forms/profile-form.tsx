@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { TextInputOverlay } from "@/components/ui/text-input-overlay";
+import { formatPhoneNumber } from "@/lib/utils";
 import type { Profile, ResponseRole, University } from "@/types/database";
 
 interface ProfileFormProps {
@@ -33,15 +34,6 @@ const UNIVERSITY_OPTIONS: University[] = [
   "Kennesaw State University",
   "Other",
 ];
-
-function formatPhoneNumber(value: string): string {
-  const digits = value.replace(/\D/g, "");
-  const limited = digits.slice(0, 10);
-  if (limited.length === 0) return "";
-  if (limited.length <= 3) return `(${limited}`;
-  if (limited.length <= 6) return `(${limited.slice(0, 3)}) ${limited.slice(3)}`;
-  return `(${limited.slice(0, 3)}) ${limited.slice(3, 6)}-${limited.slice(6)}`;
-}
 
 function isValidPhoneNumber(value: string): boolean {
   if (value === "") return true;
