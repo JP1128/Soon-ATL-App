@@ -9,7 +9,7 @@ import {
   AvatarFallback,
 } from "@/components/ui/avatar";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowDown01Icon, Car01Icon, SteeringIcon, UserGroupIcon, UserAdd01Icon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon, Car01Icon, SteeringIcon, UserGroupIcon, UserAdd01Icon, UserRemove01Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 
 interface ProfileData {
@@ -119,6 +119,11 @@ export function CarpoolAssignments({
   const [expandedDriver, setExpandedDriver] = useState<string | null>(null);
   const [addRiderTarget, setAddRiderTarget] = useState<{ driverId: string; driverName: string } | null>(null);
   const [showOnlyUnassigned, setShowOnlyUnassigned] = useState(true);
+  const [riderDetailTarget, setRiderDetailTarget] = useState<{
+    rider: RiderEntry;
+    currentDriver: { userId: string; name: string } | null;
+  } | null>(null);
+  const [rideHistory, setRideHistory] = useState<Map<string, number>>(new Map());
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollDown, setCanScrollDown] = useState(false);
   const [canScrollUp, setCanScrollUp] = useState(false);
@@ -256,16 +261,19 @@ export function CarpoolAssignments({
   const overlayRiders = useMemo(() => {
     const roleField = leg === "before" ? "before_role" : "after_role";
     const legRiders = responses.filter((r) => r[roleField] === "rider");
-    const entries = legRiders.map((r) => ({
-      userId: r.user_id,
-      profile: r.profiles,
-      assignedTo: riderDriverMap.get(r.user_id) ?? null,
-    }));
+    const entries = legRiders
+      .map((r) => ({
+        userId: r.user_id,
+        profile: r.profiles,
+        assignedTo: riderDriverMap.get(r.user_id) ?? null,
+      }))
+      // Exclude riders already assigned to the target driver
+      .filter((r) => !(r.assignedTo && addRiderTarget && r.assignedTo.driverId === addRiderTarget.driverId));
     if (showOnlyUnassigned) {
       return entries.filter((r) => !r.assignedTo);
     }
     return entries;
-  }, [responses, leg, riderDriverMap, showOnlyUnassigned]);
+  }, [responses, leg, riderDriverMap, showOnlyUnassigned, addRiderTarget]);
 
   // Filter by search
   const lowerSearch = search.toLowerCase();
@@ -344,6 +352,98 @@ export function CarpoolAssignments({
       }
     }
   }
+
+  async function handleRemoveRider(riderId: string): Promise<void> {
+    // Optimistically remove from local state
+    setCarpools((prev) =>
+      prev.map((c) => ({
+        ...c,
+        carpool_riders: c.carpool_riders.filter((cr) => cr.rider_id !== riderId),
+      }))
+    );
+    setRiderDetailTarget(null);
+
+    try {
+      await fetch(`/api/events/${eventId}/carpools`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ riderId }),
+      });
+    } catch {
+      const res = await fetch(`/api/events/${eventId}/carpools`);
+      if (res.ok) {
+        const data = await res.json();
+        setCarpools(data.carpools);
+      }
+    }
+  }
+
+  async function handleReassignRider(riderId: string, newDriverId: string): Promise<void> {
+    // Optimistically update
+    setCarpools((prev) => {
+      const updated = prev.map((c) => ({
+        ...c,
+        carpool_riders: c.carpool_riders.filter((cr) => cr.rider_id !== riderId),
+      }));
+
+      const existing = updated.find((c) => c.driver_id === newDriverId);
+      if (existing) {
+        existing.carpool_riders = [
+          ...existing.carpool_riders,
+          { rider_id: riderId, pickup_order: existing.carpool_riders.length + 1 },
+        ];
+      } else {
+        updated.push({
+          id: crypto.randomUUID(),
+          driver_id: newDriverId,
+          carpool_riders: [{ rider_id: riderId, pickup_order: 1 }],
+        });
+      }
+      return updated;
+    });
+    setRiderDetailTarget(null);
+
+    try {
+      await fetch(`/api/events/${eventId}/carpools`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ driverId: newDriverId, riderId }),
+      });
+    } catch {
+      const res = await fetch(`/api/events/${eventId}/carpools`);
+      if (res.ok) {
+        const data = await res.json();
+        setCarpools(data.carpools);
+      }
+    }
+  }
+
+  // Fetch ride history when rider detail overlay opens
+  useEffect(() => {
+    if (!riderDetailTarget) {
+      setRideHistory(new Map());
+      return;
+    }
+
+    async function fetchHistory(): Promise<void> {
+      try {
+        const res = await fetch(
+          `/api/events/${eventId}/carpools/history?riderId=${riderDetailTarget!.rider.userId}`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const map = new Map<string, number>();
+          for (const entry of data.history as Array<{ driver_id: string; count: number }>) {
+            map.set(entry.driver_id, entry.count);
+          }
+          setRideHistory(map);
+        }
+      } catch {
+        // Ignore — ride history is non-critical
+      }
+    }
+    fetchHistory();
+  }, [riderDetailTarget, eventId]);
 
   if (loading) {
     return (
@@ -517,9 +617,17 @@ export function CarpoolAssignments({
                             ) : (
                               <div className="divide-y divide-border/50">
                                 {driver.assignedRiders.map((rider) => (
-                                  <div
+                                  <button
+                                    type="button"
                                     key={rider.userId}
-                                    className="flex items-center gap-2.5 py-1.5"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setRiderDetailTarget({
+                                        rider,
+                                        currentDriver: { userId: driver.userId, name: driver.profile.full_name },
+                                      });
+                                    }}
+                                    className="flex w-full items-center gap-2.5 py-1.5 text-left transition-colors hover:bg-secondary/30 rounded-md -mx-1 px-1"
                                   >
                                     <Avatar size="sm">
                                       {rider.profile.avatar_url && (
@@ -540,7 +648,7 @@ export function CarpoolAssignments({
                                         {formatPhone(rider.profile.phone_number)}
                                       </p>
                                     </div>
-                                  </div>
+                                  </button>
                                 ))}
                               </div>
                             )}
@@ -569,41 +677,57 @@ export function CarpoolAssignments({
             filteredRiders.length === 0 ? (
               <p className="text-sm text-muted-foreground">No riders found</p>
             ) : (
-              filteredRiders.map((rider) => (
-                <ScrollReveal key={rider.userId} scrollRoot={scrollRef}>
-                  <div
-                    className={cn(
-                      "flex items-center gap-2.5 rounded-lg border px-3 py-2",
-                      !rider.assigned && "border-destructive/30 bg-destructive/5"
-                    )}
-                  >
-                    <Avatar size="sm">
-                      {rider.profile.avatar_url && (
-                        <AvatarImage
-                          src={rider.profile.avatar_url}
-                          alt={rider.profile.full_name}
-                        />
+              filteredRiders.map((rider) => {
+                const assignedDriver = riderDriverMap.get(rider.userId);
+                return (
+                  <ScrollReveal key={rider.userId} scrollRoot={scrollRef}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRiderDetailTarget({
+                          rider: { userId: rider.userId, profile: rider.profile },
+                          currentDriver: assignedDriver
+                            ? { userId: assignedDriver.driverId, name: assignedDriver.driverName }
+                            : null,
+                        });
+                      }}
+                      className={cn(
+                        "flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors hover:bg-secondary/30",
+                        !rider.assigned && "border-destructive/30 bg-destructive/5"
                       )}
-                      <AvatarFallback>
-                        {getInitials(rider.profile.full_name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-medium">
-                        {rider.profile.full_name}
-                      </p>
-                      <p className="truncate text-[11px] text-muted-foreground">
-                        {formatPhone(rider.profile.phone_number)}
-                      </p>
-                    </div>
-                    {!rider.assigned && (
-                      <span className="shrink-0 text-[10px] font-medium text-destructive">
-                        Unassigned
-                      </span>
-                    )}
-                  </div>
-                </ScrollReveal>
-              ))
+                    >
+                      <Avatar size="sm">
+                        {rider.profile.avatar_url && (
+                          <AvatarImage
+                            src={rider.profile.avatar_url}
+                            alt={rider.profile.full_name}
+                          />
+                        )}
+                        <AvatarFallback>
+                          {getInitials(rider.profile.full_name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium">
+                          {rider.profile.full_name}
+                        </p>
+                        <p className="truncate text-[11px] text-muted-foreground">
+                          {formatPhone(rider.profile.phone_number)}
+                        </p>
+                      </div>
+                      {rider.assigned ? (
+                        <span className="shrink-0 text-[10px] font-medium text-muted-foreground">
+                          {assignedDriver?.driverName.split(" ")[0] ?? "Assigned"}
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-[10px] font-medium text-destructive">
+                          Unassigned
+                        </span>
+                      )}
+                    </button>
+                  </ScrollReveal>
+                );
+              })
             )
           )}
         </div>
@@ -629,6 +753,18 @@ export function CarpoolAssignments({
         showOnlyUnassigned={showOnlyUnassigned}
         onToggleFilter={setShowOnlyUnassigned}
         targetDriverName={addRiderTarget?.driverName ?? ""}
+      />
+
+      {/* Rider detail overlay */}
+      <RiderDetailOverlay
+        open={riderDetailTarget !== null}
+        onClose={() => setRiderDetailTarget(null)}
+        rider={riderDetailTarget?.rider ?? null}
+        currentDriver={riderDetailTarget?.currentDriver ?? null}
+        drivers={drivers}
+        rideHistory={rideHistory}
+        onRemove={handleRemoveRider}
+        onReassign={handleReassignRider}
       />
     </div>
   );
@@ -819,6 +955,286 @@ function RiderSelectionOverlay({
               {selectedRiderId && riders.find((r) => r.userId === selectedRiderId)?.assignedTo
                 ? "Swap"
                 : "Assign"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Rider detail overlay                                              */
+/* ------------------------------------------------------------------ */
+
+function RiderDetailOverlay({
+  open,
+  onClose,
+  rider,
+  currentDriver,
+  drivers,
+  rideHistory,
+  onRemove,
+  onReassign,
+}: {
+  open: boolean;
+  onClose: () => void;
+  rider: RiderEntry | null;
+  currentDriver: { userId: string; name: string } | null;
+  drivers: DriverEntry[];
+  rideHistory: Map<string, number>;
+  onRemove: (riderId: string) => void;
+  onReassign: (riderId: string, driverId: string) => void;
+}): React.ReactElement | null {
+  const [mounted, setMounted] = useState(false);
+  const [visible, setVisible] = useState(false);
+  const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
+  const [replaceRiderId, setReplaceRiderId] = useState<string | null>(null);
+  const [removeMode, setRemoveMode] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      setSelectedDriverId(null);
+      setReplaceRiderId(null);
+      setRemoveMode(false);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setVisible(true));
+      });
+    } else {
+      setVisible(false);
+      const timer = setTimeout(() => setMounted(false), 200);
+      return () => clearTimeout(timer);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = "";
+      };
+    }
+  }, [open]);
+
+  if (!mounted || !rider) return null;
+
+  // Exclude the current driver from the reassignment list (show all if unassigned)
+  const availableDrivers = currentDriver
+    ? drivers.filter((d) => d.userId !== currentDriver.userId)
+    : drivers;
+
+  function handleDriverTap(driverId: string): void {
+    setSelectedDriverId((prev) => (prev === driverId ? null : driverId));
+    setReplaceRiderId(null);
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-60" role="dialog" aria-modal="true">
+      {/* Backdrop */}
+      <div
+        className={cn(
+          "absolute inset-0 bg-black/80 transition-opacity duration-100 supports-backdrop-filter:backdrop-blur-xs",
+          visible ? "opacity-100" : "opacity-0"
+        )}
+        onClick={onClose}
+      />
+      {/* Content */}
+      <div
+        className={cn(
+          "absolute inset-0 flex items-center justify-center pointer-events-none transition-all duration-100",
+          visible ? "opacity-100 scale-100" : "opacity-0 scale-95"
+        )}
+      >
+        <div className="pointer-events-auto relative w-full max-w-[calc(100%-2rem)] sm:max-w-sm rounded-4xl bg-popover p-6 ring-1 ring-foreground/5">
+          {/* Remove toggle — top right (only for assigned riders) */}
+          {currentDriver && (
+            <button
+              type="button"
+              onClick={() => {
+                setRemoveMode((prev) => !prev);
+                setSelectedDriverId(null);
+                setReplaceRiderId(null);
+              }}
+              className={cn(
+                "absolute top-5 right-5 flex items-center gap-1 rounded-4xl border px-3 py-1.5 text-[11px] font-medium transition-colors",
+                removeMode
+                  ? "border-destructive/40 bg-destructive/10 text-destructive"
+                  : "border-input bg-input/30 text-muted-foreground hover:bg-input/50"
+              )}
+            >
+              <HugeiconsIcon icon={UserRemove01Icon} size={13} strokeWidth={1.5} />
+              Remove
+            </button>
+          )}
+
+          {/* Rider profile header */}
+          <div className="flex items-center gap-3 mb-1">
+            <Avatar>
+              {rider.profile.avatar_url && (
+                <AvatarImage src={rider.profile.avatar_url} alt={rider.profile.full_name} />
+              )}
+              <AvatarFallback>{getInitials(rider.profile.full_name)}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{rider.profile.full_name}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {formatPhone(rider.profile.phone_number)}
+              </p>
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground mb-4">
+            {currentDriver
+              ? <>Currently with <span className="font-medium text-foreground">{currentDriver.name}</span></>
+              : <span className="font-medium text-destructive">Unassigned</span>}
+          </p>
+
+          {/* Assign / Reassign section */}
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+            {currentDriver ? "Reassign to" : "Assign to"}
+          </p>
+
+          <div className="max-h-[50vh] overflow-y-auto -mx-2 px-2 py-1 space-y-1 scrollbar-none">
+            {availableDrivers.length === 0 ? (
+              <p className="py-4 text-center text-xs text-muted-foreground">
+                No other drivers available
+              </p>
+            ) : (
+              availableDrivers.map((driver) => {
+                const isSelected = selectedDriverId === driver.userId;
+                const isHidden = selectedDriverId !== null && !isSelected;
+                const rides = rideHistory.get(driver.userId) ?? 0;
+                const isFull = driver.assignedRiders.length >= driver.availableSeats && driver.availableSeats > 0;
+
+                return (
+                  <div
+                    key={driver.userId}
+                    className={cn(
+                      "rounded-lg border overflow-hidden transition-all duration-200 ease-out",
+                      isSelected && "ring-1 ring-primary/30 bg-primary/5",
+                      isHidden && "opacity-0 h-0 border-transparent m-0! p-0! pointer-events-none",
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleDriverTap(driver.userId)}
+                      className="flex w-full items-center gap-2.5 px-2.5 py-2 text-left transition-colors hover:bg-secondary/30"
+                    >
+                      <Avatar size="sm">
+                        {driver.profile.avatar_url && (
+                          <AvatarImage src={driver.profile.avatar_url} alt={driver.profile.full_name} />
+                        )}
+                        <AvatarFallback>{getInitials(driver.profile.full_name)}</AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium">{driver.profile.full_name}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className={cn(
+                          "flex items-center gap-1 text-xs",
+                          isFull ? "text-destructive" : "text-muted-foreground"
+                        )}>
+                          <HugeiconsIcon icon={Car01Icon} className="size-3.5" strokeWidth={1.5} />
+                          {driver.assignedRiders.length}/{driver.availableSeats}
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* Detail: current riders + ride history */}
+                    <div
+                      className={cn(
+                        "grid transition-[grid-template-rows] duration-200 ease-out",
+                        isSelected ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                      )}
+                    >
+                      <div className="overflow-hidden">
+                        <div className="border-t bg-secondary/20 px-3 py-1.5">
+                        {/* Ride history */}
+                        <p className="text-[11px] text-muted-foreground py-1">
+                          {rides > 0
+                            ? `${driver.profile.full_name.split(" ")[0]} has given ${rider.profile.full_name.split(" ")[0]} a ride ${rides} time${rides !== 1 ? "s" : ""}`
+                            : `No previous rides together`}
+                        </p>
+
+                        {/* Current riders */}
+                        {driver.assignedRiders.length === 0 ? (
+                          <p className="py-1 text-[11px] text-muted-foreground">
+                            No riders assigned
+                          </p>
+                        ) : (
+                          <div className="divide-y divide-border/50">
+                            {driver.assignedRiders.map((r) => (
+                              <button
+                                type="button"
+                                key={r.userId}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setReplaceRiderId((prev) => (prev === r.userId ? null : r.userId));
+                                }}
+                                className={cn(
+                                  "flex w-full items-center gap-2 py-1.5 rounded-md px-1 -mx-1 text-left transition-colors",
+                                  replaceRiderId === r.userId
+                                    ? "bg-destructive/10 ring-1 ring-destructive/30"
+                                    : "hover:bg-secondary/30"
+                                )}
+                              >
+                                <Avatar size="sm">
+                                  {r.profile.avatar_url && (
+                                    <AvatarImage src={r.profile.avatar_url} alt={r.profile.full_name} />
+                                  )}
+                                  <AvatarFallback>{getInitials(r.profile.full_name)}</AvatarFallback>
+                                </Avatar>
+                                <p className="truncate text-xs">{r.profile.full_name}</p>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Action buttons */}
+          <div className="mt-4 flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 rounded-4xl border border-input bg-input/30 px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-input/50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!selectedDriverId && !removeMode}
+              onClick={() => {
+                if (rider) {
+                  if (removeMode) {
+                    onRemove(rider.userId);
+                  } else if (selectedDriverId) {
+                    if (replaceRiderId) {
+                      onRemove(replaceRiderId);
+                      onReassign(rider.userId, selectedDriverId);
+                    } else {
+                      onReassign(rider.userId, selectedDriverId);
+                    }
+                  }
+                }
+              }}
+              className={cn(
+                "flex-1 rounded-4xl px-4 py-2.5 text-sm font-medium transition-colors",
+                removeMode
+                  ? "border border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20"
+                  : selectedDriverId
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "border border-input bg-input/30 text-muted-foreground cursor-not-allowed"
+              )}
+            >
+              {removeMode ? "Remove" : replaceRiderId ? "Replace" : currentDriver ? "Reassign" : "Assign"}
             </button>
           </div>
         </div>

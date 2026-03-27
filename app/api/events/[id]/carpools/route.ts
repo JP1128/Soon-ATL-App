@@ -174,3 +174,45 @@ export async function POST(
 
   return NextResponse.json({ success: true });
 }
+
+export async function DELETE(
+  request: Request,
+  { params }: RouteParams
+): Promise<NextResponse> {
+  const { id: eventId } = await params;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await request.json();
+  const { riderId } = body as { riderId: string };
+
+  if (!riderId) {
+    return NextResponse.json(
+      { error: "riderId is required" },
+      { status: 400 }
+    );
+  }
+
+  // Find all carpools for this event and remove the rider
+  const { data: existingCarpools } = await supabase
+    .from("carpools")
+    .select("id")
+    .eq("event_id", eventId) as { data: Array<{ id: string }> | null };
+
+  if (existingCarpools && existingCarpools.length > 0) {
+    const carpoolIds = existingCarpools.map((c) => c.id);
+    await supabase
+      .from("carpool_riders")
+      .delete()
+      .eq("rider_id", riderId)
+      .in("carpool_id", carpoolIds);
+  }
+
+  return NextResponse.json({ success: true });
+}
