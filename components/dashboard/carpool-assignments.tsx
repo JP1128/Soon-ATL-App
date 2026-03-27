@@ -117,7 +117,7 @@ export function CarpoolAssignments({
   const [listView, setListView] = useState<"drivers" | "riders">("drivers");
   const [search, setSearch] = useState("");
   const [expandedDriver, setExpandedDriver] = useState<string | null>(null);
-  const [addRiderTarget, setAddRiderTarget] = useState<{ driverId: string; driverName: string } | null>(null);
+  const [addRiderTarget, setAddRiderTarget] = useState<{ driverId: string; driverName: string; availableSeats: number; currentRiderCount: number } | null>(null);
   const [showOnlyUnassigned, setShowOnlyUnassigned] = useState(true);
   const [riderDetailTarget, setRiderDetailTarget] = useState<{
     rider: RiderEntry;
@@ -308,31 +308,31 @@ export function CarpoolAssignments({
     setTimeout(checkScroll, 250);
   }
 
-  async function handleAddRider(riderId: string): Promise<void> {
-    if (!addRiderTarget) return;
+  async function handleAddRiders(riderIds: string[]): Promise<void> {
+    if (!addRiderTarget || riderIds.length === 0) return;
     const { driverId } = addRiderTarget;
 
     // Optimistically update local state
     setCarpools((prev) => {
-      // Remove rider from any existing carpool
-      const updated = prev.map((c) => ({
+      let updated = prev.map((c) => ({
         ...c,
-        carpool_riders: c.carpool_riders.filter((cr) => cr.rider_id !== riderId),
+        carpool_riders: c.carpool_riders.filter((cr) => !riderIds.includes(cr.rider_id)),
       }));
 
-      // Find or create carpool for the target driver
       const existing = updated.find((c) => c.driver_id === driverId);
       if (existing) {
-        const nextOrder = existing.carpool_riders.length + 1;
-        existing.carpool_riders = [
-          ...existing.carpool_riders,
-          { rider_id: riderId, pickup_order: nextOrder },
-        ];
+        let nextOrder = existing.carpool_riders.length + 1;
+        for (const riderId of riderIds) {
+          existing.carpool_riders = [
+            ...existing.carpool_riders,
+            { rider_id: riderId, pickup_order: nextOrder++ },
+          ];
+        }
       } else {
         updated.push({
           id: crypto.randomUUID(),
           driver_id: driverId,
-          carpool_riders: [{ rider_id: riderId, pickup_order: 1 }],
+          carpool_riders: riderIds.map((riderId, i) => ({ rider_id: riderId, pickup_order: i + 1 })),
         });
       }
 
@@ -343,13 +343,14 @@ export function CarpoolAssignments({
 
     // Persist to server
     try {
-      await fetch(`/api/events/${eventId}/carpools`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ driverId, riderId }),
-      });
+      for (const riderId of riderIds) {
+        await fetch(`/api/events/${eventId}/carpools`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ driverId, riderId }),
+        });
+      }
     } catch {
-      // Re-fetch on failure to restore correct state
       const res = await fetch(`/api/events/${eventId}/carpools`);
       if (res.ok) {
         const data = await res.json();
@@ -673,7 +674,7 @@ export function CarpoolAssignments({
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setAddRiderTarget({ driverId: driver.userId, driverName: driver.profile.full_name });
+                                  setAddRiderTarget({ driverId: driver.userId, driverName: driver.profile.full_name, availableSeats: driver.availableSeats, currentRiderCount: driver.assignedRiders.length });
                                 }}
                                 className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border/60 py-1.5 mt-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
                               >
@@ -764,11 +765,12 @@ export function CarpoolAssignments({
       <RiderSelectionOverlay
         open={addRiderTarget !== null}
         onClose={() => setAddRiderTarget(null)}
-        onSelect={handleAddRider}
+        onSelect={handleAddRiders}
         riders={overlayRiders}
         showOnlyUnassigned={showOnlyUnassigned}
         onToggleFilter={setShowOnlyUnassigned}
         targetDriverName={addRiderTarget?.driverName ?? ""}
+        remainingSeats={addRiderTarget ? addRiderTarget.availableSeats - addRiderTarget.currentRiderCount : 0}
       />
 
       {/* Rider detail overlay */}
@@ -804,23 +806,56 @@ function RiderSelectionOverlay({
   showOnlyUnassigned,
   onToggleFilter,
   targetDriverName,
+  remainingSeats,
 }: {
   open: boolean;
   onClose: () => void;
-  onSelect: (riderId: string) => void;
+  onSelect: (riderIds: string[]) => void;
   riders: OverlayRider[];
   showOnlyUnassigned: boolean;
   onToggleFilter: (value: boolean) => void;
   targetDriverName: string;
+  remainingSeats: number;
 }): React.ReactElement | null {
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
-  const [selectedRiderId, setSelectedRiderId] = useState<string | null>(null);
+  const [selectedRiderIds, setSelectedRiderIds] = useState<Set<string>>(new Set());
+
+  // Count how many selected riders are swaps (already assigned elsewhere)
+  const swapCount = useMemo(() => {
+    let count = 0;
+    for (const id of selectedRiderIds) {
+      const r = riders.find((r) => r.userId === id);
+      if (r?.assignedTo) count++;
+    }
+    return count;
+  }, [selectedRiderIds, riders]);
+
+  // Net new seats needed = selected count minus swaps (swaps don't consume new seats)
+  const newSeatsNeeded = selectedRiderIds.size - swapCount;
+  const atCapacity = newSeatsNeeded >= remainingSeats;
+
+  function toggleRider(riderId: string): void {
+    setSelectedRiderIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(riderId)) {
+        next.delete(riderId);
+      } else {
+        // Check if adding this rider would exceed capacity
+        const isSwap = riders.find((r) => r.userId === riderId)?.assignedTo !== null;
+        const wouldNeed = newSeatsNeeded + (isSwap ? 0 : 1);
+        if (wouldNeed <= remainingSeats) {
+          next.add(riderId);
+        }
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (open) {
       setMounted(true);
-      setSelectedRiderId(null);
+      setSelectedRiderIds(new Set());
       requestAnimationFrame(() => {
         requestAnimationFrame(() => setVisible(true));
       });
@@ -901,17 +936,22 @@ function RiderSelectionOverlay({
               </p>
             ) : (
               riders.map((rider) => {
-                const isSelected = selectedRiderId === rider.userId;
+                const isSelected = selectedRiderIds.has(rider.userId);
+                const isSwap = rider.assignedTo !== null;
+                const wouldExceed = !isSelected && atCapacity && !isSwap;
                 return (
                   <button
                     key={rider.userId}
                     type="button"
-                    onClick={() => setSelectedRiderId(isSelected ? null : rider.userId)}
+                    onClick={() => toggleRider(rider.userId)}
+                    disabled={wouldExceed}
                     className={cn(
                       "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors",
                       isSelected
                         ? "bg-primary/10 ring-1 ring-primary/30"
-                        : "hover:bg-secondary/40"
+                        : wouldExceed
+                          ? "opacity-40 cursor-not-allowed"
+                          : "hover:bg-secondary/40"
                     )}
                   >
                     <Avatar size="sm">
@@ -957,19 +997,19 @@ function RiderSelectionOverlay({
             </button>
             <button
               type="button"
-              disabled={!selectedRiderId}
+              disabled={selectedRiderIds.size === 0}
               onClick={() => {
-                if (selectedRiderId) onSelect(selectedRiderId);
+                if (selectedRiderIds.size > 0) onSelect(Array.from(selectedRiderIds));
               }}
               className={cn(
                 "flex-1 rounded-4xl px-4 py-2.5 text-sm font-medium transition-colors",
-                selectedRiderId
+                selectedRiderIds.size > 0
                   ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                  : "bg-primary/40 text-primary-foreground/50 cursor-not-allowed"
+                  : "border border-input bg-input/30 text-muted-foreground cursor-not-allowed"
               )}
             >
-              {selectedRiderId && riders.find((r) => r.userId === selectedRiderId)?.assignedTo
-                ? "Swap"
+              {selectedRiderIds.size > 0
+                ? `Assign${selectedRiderIds.size > 1 ? ` (${selectedRiderIds.size})` : ""}`
                 : "Assign"}
             </button>
           </div>
