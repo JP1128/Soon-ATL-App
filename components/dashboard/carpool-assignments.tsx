@@ -9,8 +9,9 @@ import {
   AvatarFallback,
 } from "@/components/ui/avatar";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowDown01Icon, Car01Icon, SteeringIcon, UserGroupIcon, UserAdd01Icon, UserRemove01Icon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon, Car01Icon, SteeringIcon, UserGroupIcon, UserAdd01Icon, UserRemove01Icon, SentIcon } from "@hugeicons/core-free-icons";
 import { cn, formatPhoneNumber } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 interface ProfileData {
   id: string;
@@ -55,6 +56,7 @@ interface RiderEntry {
 
 interface CarpoolAssignmentsProps {
   eventId: string;
+  carpoolsSentAt: string | null;
 }
 
 function getInitials(name: string): string {
@@ -109,6 +111,7 @@ function ScrollReveal({ children, className, scrollRoot }: { children: React.Rea
 
 export function CarpoolAssignments({
   eventId,
+  carpoolsSentAt,
 }: CarpoolAssignmentsProps): React.ReactElement {
   const [responses, setResponses] = useState<ResponseRow[]>([]);
   const [carpools, setCarpools] = useState<CarpoolRow[]>([]);
@@ -127,6 +130,9 @@ export function CarpoolAssignments({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollDown, setCanScrollDown] = useState(false);
   const [canScrollUp, setCanScrollUp] = useState(false);
+  const [showSendConfirm, setShowSendConfirm] = useState(false);
+  const [sentAt, setSentAt] = useState<string | null>(carpoolsSentAt);
+  const [sending, setSending] = useState(false);
 
   const checkScroll = useCallback((): void => {
     const el = scrollRef.current;
@@ -424,6 +430,24 @@ export function CarpoolAssignments({
     }
   }
 
+  async function handleSend(): Promise<void> {
+    setSending(true);
+    try {
+      const res = await fetch(`/api/events/${eventId}/carpools`, {
+        method: "PATCH",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSentAt(data.carpools_sent_at);
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setSending(false);
+      setShowSendConfirm(false);
+    }
+  }
+
   // Fetch ride history when rider detail overlay opens
   useEffect(() => {
     if (!riderDetailTarget) {
@@ -463,15 +487,24 @@ export function CarpoolAssignments({
     <div className="flex h-full flex-col">
       {/* Fixed header: title, toggles, stats, search */}
       <div className="flex-none space-y-5 pb-4">
-        {/* Header + leg toggle */}
+        {/* Header */}
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-semibold">Carpool Assignment</h1>
+          <Button size="sm" onClick={() => setShowSendConfirm(true)}>
+            <HugeiconsIcon icon={SentIcon} className="size-4" strokeWidth={1.5} />
+            {sentAt ? "Send Update" : "Send"}
+          </Button>
+        </div>
+
+        {/* Toggles */}
+        <div className="space-y-2">
+          {/* Before / After toggle */}
           <div className="flex rounded-lg bg-secondary/50 p-0.5">
             <button
               type="button"
               onClick={() => setLeg("before")}
               className={cn(
-                "inline-flex items-center justify-center rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                "inline-flex flex-1 items-center justify-center rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
                 leg === "before"
                   ? "bg-background shadow-sm text-foreground"
                   : "text-muted-foreground hover:text-foreground"
@@ -484,7 +517,7 @@ export function CarpoolAssignments({
               type="button"
               onClick={() => setLeg("after")}
               className={cn(
-                "inline-flex items-center justify-center rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                "inline-flex flex-1 items-center justify-center rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
                 leg === "after"
                   ? "bg-background shadow-sm text-foreground"
                   : "text-muted-foreground hover:text-foreground"
@@ -494,10 +527,9 @@ export function CarpoolAssignments({
               After
             </button>
           </div>
-        </div>
 
-        {/* Driver / Rider toggle */}
-        <div className="flex rounded-lg bg-secondary/50 p-0.5">
+          {/* Driver / Rider toggle */}
+          <div className="flex rounded-lg bg-secondary/50 p-0.5">
           <button
             type="button"
             onClick={() => setListView("drivers")}
@@ -529,6 +561,7 @@ export function CarpoolAssignments({
               </span>
             )}
           </button>
+        </div>
         </div>
 
         {/* Search */}
@@ -783,6 +816,16 @@ export function CarpoolAssignments({
         rideHistory={rideHistory}
         onRemove={handleRemoveRider}
         onReassign={handleReassignRider}
+      />
+
+      {/* Send confirmation overlay */}
+      <SendConfirmOverlay
+        open={showSendConfirm}
+        onClose={() => setShowSendConfirm(false)}
+        onConfirm={handleSend}
+        isUpdate={sentAt !== null}
+        unassignedRiders={unassignedRiders}
+        sending={sending}
       />
     </div>
   );
@@ -1298,6 +1341,144 @@ function RiderDetailOverlay({
               )}
             >
               {removeMode ? "Remove" : replaceRiderId ? "Replace" : currentDriver ? "Reassign" : "Assign"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Send confirmation overlay                                         */
+/* ------------------------------------------------------------------ */
+
+function SendConfirmOverlay({
+  open,
+  onClose,
+  onConfirm,
+  isUpdate,
+  unassignedRiders,
+  sending,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  isUpdate: boolean;
+  unassignedRiders: RiderEntry[];
+  sending: boolean;
+}): React.ReactElement | null {
+  const [mounted, setMounted] = useState(false);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setVisible(true));
+      });
+    } else {
+      setVisible(false);
+      const timer = setTimeout(() => setMounted(false), 200);
+      return () => clearTimeout(timer);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = "";
+      };
+    }
+  }, [open]);
+
+  if (!mounted) return null;
+
+  const hasUnassigned = unassignedRiders.length > 0;
+
+  return createPortal(
+    <div className="fixed inset-0 z-60" role="dialog" aria-modal="true">
+      {/* Backdrop */}
+      <div
+        className={cn(
+          "absolute inset-0 bg-black/80 transition-opacity duration-100 supports-backdrop-filter:backdrop-blur-xs",
+          visible ? "opacity-100" : "opacity-0"
+        )}
+        onClick={onClose}
+      />
+      {/* Content */}
+      <div
+        className={cn(
+          "absolute inset-0 flex items-center justify-center pointer-events-none transition-all duration-100",
+          visible ? "opacity-100 scale-100" : "opacity-0 scale-95"
+        )}
+      >
+        <div className="pointer-events-auto w-full max-w-[calc(100%-2rem)] sm:max-w-sm rounded-4xl bg-popover p-6 ring-1 ring-foreground/5">
+          {/* Title */}
+          <p className="text-sm font-semibold mb-1">
+            {isUpdate ? "Send Update?" : "Send Carpool Assignments?"}
+          </p>
+
+          {/* Unassigned riders warning */}
+          {hasUnassigned && (
+            <div className="mt-4 mb-2">
+              {/* Stacked avatars */}
+              <div className="flex items-center -space-x-2 mb-3">
+                {unassignedRiders.slice(0, 5).map((rider) => (
+                  <Avatar key={rider.userId} size="sm" className="ring-2 ring-popover">
+                    {rider.profile.avatar_url && (
+                      <AvatarImage src={rider.profile.avatar_url} alt={rider.profile.full_name} />
+                    )}
+                    <AvatarFallback>{getInitials(rider.profile.full_name)}</AvatarFallback>
+                  </Avatar>
+                ))}
+                {unassignedRiders.length > 5 && (
+                  <div className="flex items-center justify-center size-8 rounded-full bg-secondary text-[10px] font-medium text-muted-foreground ring-2 ring-popover">
+                    +{unassignedRiders.length - 5}
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-destructive">
+                {unassignedRiders.length === 1
+                  ? "There is 1 unassigned rider. Are you sure you want to send?"
+                  : `There are ${unassignedRiders.length} unassigned riders. Are you sure you want to send?`}
+              </p>
+            </div>
+          )}
+
+          {/* Update notice */}
+          {isUpdate && (
+            <p className="text-xs text-muted-foreground mt-3">
+              Only the members affected by the changes will be notified of this update.
+            </p>
+          )}
+
+          {/* No issues */}
+          {!hasUnassigned && !isUpdate && (
+            <p className="text-xs text-muted-foreground">
+              This will send the carpool assignments to all members.
+            </p>
+          )}
+
+          {/* Action buttons */}
+          <div className="mt-5 flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={sending}
+              className="flex-1 rounded-4xl border border-input bg-input/30 px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-input/50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={sending}
+              className="flex-1 rounded-4xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+            >
+              {sending ? "Sending…" : isUpdate ? "Send Update" : "Send"}
             </button>
           </div>
         </div>

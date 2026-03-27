@@ -216,3 +216,44 @@ export async function DELETE(
 
   return NextResponse.json({ success: true });
 }
+
+export async function PATCH(
+  _request: Request,
+  { params }: RouteParams
+): Promise<NextResponse> {
+  const { id: eventId } = await params;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (profile?.role !== "organizer") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { data, error } = await supabase
+    .from("events")
+    .update({ carpools_sent_at: new Date().toISOString() })
+    .eq("id", eventId)
+    .select("carpools_sent_at")
+    .single();
+
+  if (error) {
+    return NextResponse.json(
+      { error: "Failed to send carpool assignments" },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ success: true, carpools_sent_at: data.carpools_sent_at });
+}

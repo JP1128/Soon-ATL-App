@@ -33,6 +33,7 @@ export interface Event {
   status: EventStatus;
   created_by: string;
   sent_at: string | null;
+  carpools_sent_at: string | null;
   created_at: string;
 }
 
