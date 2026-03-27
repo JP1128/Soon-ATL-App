@@ -192,7 +192,12 @@ export function DraftEventEditor({ event, stats }: DraftEventEditorProps): React
                 <HugeiconsIcon icon={Edit02Icon} className="size-4" />
                 Edit Event
               </Button>
-              <Button variant="outline" className="w-full rounded-xl">
+              <Button
+                variant="outline"
+                className="w-full rounded-xl"
+                disabled={!stats || stats.total === 0}
+                onClick={() => router.push(`/dashboard/events/${event.id}/carpools`)}
+              >
                 <HugeiconsIcon icon={Car01Icon} className="size-4" />
                 Carpool Assignment
               </Button>

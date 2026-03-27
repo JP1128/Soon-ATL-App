@@ -40,7 +40,13 @@ export default function RootLayout({
       )}
     >
       <body className="flex h-full flex-col overflow-hidden">
-        <main className="flex flex-1 flex-col items-center overflow-y-auto overscroll-contain pb-20">{children}</main>
+        <main
+          className="flex flex-1 flex-col items-center overflow-y-auto overscroll-contain pb-20"
+          style={{
+            maskImage: "linear-gradient(to bottom, black calc(100% - 5rem), transparent)",
+            WebkitMaskImage: "linear-gradient(to bottom, black calc(100% - 5rem), transparent)",
+          }}
+        >{children}</main>
         <BottomNavServer />
       </body>
     </html>
