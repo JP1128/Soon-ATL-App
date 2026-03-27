@@ -73,3 +73,104 @@ export async function GET(
     carpools: carpools ?? [],
   });
 }
+
+export async function POST(
+  request: Request,
+  { params }: RouteParams
+): Promise<NextResponse> {
+  const { id: eventId } = await params;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await request.json();
+  const { driverId, riderId } = body as { driverId: string; riderId: string };
+
+  if (!driverId || !riderId) {
+    return NextResponse.json(
+      { error: "driverId and riderId are required" },
+      { status: 400 }
+    );
+  }
+
+  // Remove rider from any existing carpool in this event
+  const { data: existingCarpools } = await supabase
+    .from("carpools")
+    .select("id")
+    .eq("event_id", eventId) as { data: Array<{ id: string }> | null };
+
+  if (existingCarpools && existingCarpools.length > 0) {
+    const carpoolIds = existingCarpools.map((c) => c.id);
+    await supabase
+      .from("carpool_riders")
+      .delete()
+      .eq("rider_id", riderId)
+      .in("carpool_id", carpoolIds);
+  }
+
+  // Find or create a carpool for the driver
+  let { data: carpool } = await supabase
+    .from("carpools")
+    .select("id")
+    .eq("event_id", eventId)
+    .eq("driver_id", driverId)
+    .single();
+
+  if (!carpool) {
+    const { data: newCarpool, error: createError } = await supabase
+      .from("carpools")
+      .insert({
+        event_id: eventId,
+        driver_id: driverId,
+        route_summary: {},
+        total_distance_meters: 0,
+        status: "manual",
+      })
+      .select("id")
+      .single();
+
+    if (createError || !newCarpool) {
+      return NextResponse.json(
+        { error: "Failed to create carpool" },
+        { status: 500 }
+      );
+    }
+    carpool = newCarpool;
+  }
+
+  // Get current max pickup_order for this carpool
+  const { data: currentRiders } = await supabase
+    .from("carpool_riders")
+    .select("pickup_order")
+    .eq("carpool_id", carpool.id)
+    .order("pickup_order", { ascending: false })
+    .limit(1);
+
+  const nextOrder =
+    currentRiders && currentRiders.length > 0
+      ? currentRiders[0].pickup_order + 1
+      : 1;
+
+  // Add rider to carpool
+  const { error: insertError } = await supabase
+    .from("carpool_riders")
+    .insert({
+      carpool_id: carpool.id,
+      rider_id: riderId,
+      pickup_order: nextOrder,
+    });
+
+  if (insertError) {
+    return NextResponse.json(
+      { error: "Failed to add rider" },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ success: true });
+}

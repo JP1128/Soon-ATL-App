@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Input } from "@/components/ui/input";
 import {
   Avatar,
@@ -8,7 +9,7 @@ import {
   AvatarFallback,
 } from "@/components/ui/avatar";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowDown01Icon, Car01Icon, SteeringIcon, UserGroupIcon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon, Car01Icon, SteeringIcon, UserGroupIcon, UserAdd01Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 
 interface ProfileData {
@@ -116,6 +117,8 @@ export function CarpoolAssignments({
   const [listView, setListView] = useState<"drivers" | "riders">("drivers");
   const [search, setSearch] = useState("");
   const [expandedDriver, setExpandedDriver] = useState<string | null>(null);
+  const [addRiderTarget, setAddRiderTarget] = useState<{ driverId: string; driverName: string } | null>(null);
+  const [showOnlyUnassigned, setShowOnlyUnassigned] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollDown, setCanScrollDown] = useState(false);
   const [canScrollUp, setCanScrollUp] = useState(false);
@@ -238,6 +241,32 @@ export function CarpoolAssignments({
     }));
   }, [responses, leg, assignedRiderIds]);
 
+  // Map rider -> assigned driver for the overlay
+  const riderDriverMap = useMemo(() => {
+    const map = new Map<string, { driverId: string; driverName: string }>();
+    for (const driver of drivers) {
+      for (const rider of driver.assignedRiders) {
+        map.set(rider.userId, { driverId: driver.userId, driverName: driver.profile.full_name });
+      }
+    }
+    return map;
+  }, [drivers]);
+
+  // Riders shown in the overlay
+  const overlayRiders = useMemo(() => {
+    const roleField = leg === "before" ? "before_role" : "after_role";
+    const legRiders = responses.filter((r) => r[roleField] === "rider");
+    const entries = legRiders.map((r) => ({
+      userId: r.user_id,
+      profile: r.profiles,
+      assignedTo: riderDriverMap.get(r.user_id) ?? null,
+    }));
+    if (showOnlyUnassigned) {
+      return entries.filter((r) => !r.assignedTo);
+    }
+    return entries;
+  }, [responses, leg, riderDriverMap, showOnlyUnassigned]);
+
   // Filter by search
   const lowerSearch = search.toLowerCase();
   const filteredDrivers = useMemo(() => {
@@ -264,6 +293,56 @@ export function CarpoolAssignments({
     setExpandedDriver((prev) => (prev === userId ? null : userId));
     // Recheck scroll after expand animation
     setTimeout(checkScroll, 250);
+  }
+
+  async function handleAddRider(riderId: string): Promise<void> {
+    if (!addRiderTarget) return;
+    const { driverId } = addRiderTarget;
+
+    // Optimistically update local state
+    setCarpools((prev) => {
+      // Remove rider from any existing carpool
+      const updated = prev.map((c) => ({
+        ...c,
+        carpool_riders: c.carpool_riders.filter((cr) => cr.rider_id !== riderId),
+      }));
+
+      // Find or create carpool for the target driver
+      const existing = updated.find((c) => c.driver_id === driverId);
+      if (existing) {
+        const nextOrder = existing.carpool_riders.length + 1;
+        existing.carpool_riders = [
+          ...existing.carpool_riders,
+          { rider_id: riderId, pickup_order: nextOrder },
+        ];
+      } else {
+        updated.push({
+          id: crypto.randomUUID(),
+          driver_id: driverId,
+          carpool_riders: [{ rider_id: riderId, pickup_order: 1 }],
+        });
+      }
+
+      return updated;
+    });
+
+    setAddRiderTarget(null);
+
+    // Persist to server
+    try {
+      await fetch(`/api/events/${eventId}/carpools`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ driverId, riderId }),
+      });
+    } catch {
+      // Re-fetch on failure to restore correct state
+      const res = await fetch(`/api/events/${eventId}/carpools`);
+      if (res.ok) {
+        const data = await res.json();
+        setCarpools(data.carpools);
+      }
+    }
   }
 
   if (loading) {
@@ -465,6 +544,19 @@ export function CarpoolAssignments({
                                 ))}
                               </div>
                             )}
+                            {driver.availableSeats > 0 && driver.assignedRiders.length < driver.availableSeats && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAddRiderTarget({ driverId: driver.userId, driverName: driver.profile.full_name });
+                                }}
+                                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border/60 py-1.5 mt-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                              >
+                                <HugeiconsIcon icon={UserAdd01Icon} className="size-3.5" strokeWidth={1.5} />
+                                Add rider
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -527,6 +619,211 @@ export function CarpoolAssignments({
           <span className="text-[10px] tracking-[0.25em] text-muted-foreground/50">•••</span>
         </div>
       </div>
+
+      {/* Rider selection overlay */}
+      <RiderSelectionOverlay
+        open={addRiderTarget !== null}
+        onClose={() => setAddRiderTarget(null)}
+        onSelect={handleAddRider}
+        riders={overlayRiders}
+        showOnlyUnassigned={showOnlyUnassigned}
+        onToggleFilter={setShowOnlyUnassigned}
+        targetDriverName={addRiderTarget?.driverName ?? ""}
+      />
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Rider selection overlay                                           */
+/* ------------------------------------------------------------------ */
+
+interface OverlayRider {
+  userId: string;
+  profile: ProfileData;
+  assignedTo: { driverId: string; driverName: string } | null;
+}
+
+function RiderSelectionOverlay({
+  open,
+  onClose,
+  onSelect,
+  riders,
+  showOnlyUnassigned,
+  onToggleFilter,
+  targetDriverName,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSelect: (riderId: string) => void;
+  riders: OverlayRider[];
+  showOnlyUnassigned: boolean;
+  onToggleFilter: (value: boolean) => void;
+  targetDriverName: string;
+}): React.ReactElement | null {
+  const [mounted, setMounted] = useState(false);
+  const [visible, setVisible] = useState(false);
+  const [selectedRiderId, setSelectedRiderId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      setSelectedRiderId(null);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setVisible(true));
+      });
+    } else {
+      setVisible(false);
+      const timer = setTimeout(() => setMounted(false), 200);
+      return () => clearTimeout(timer);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = "";
+      };
+    }
+  }, [open]);
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-60" role="dialog" aria-modal="true">
+      {/* Backdrop */}
+      <div
+        className={cn(
+          "absolute inset-0 bg-black/80 transition-opacity duration-100 supports-backdrop-filter:backdrop-blur-xs",
+          visible ? "opacity-100" : "opacity-0"
+        )}
+        onClick={onClose}
+      />
+      {/* Content */}
+      <div
+        className={cn(
+          "absolute inset-0 flex items-center justify-center pointer-events-none transition-all duration-100",
+          visible ? "opacity-100 scale-100" : "opacity-0 scale-95"
+        )}
+      >
+        <div className="pointer-events-auto w-full max-w-[calc(100%-2rem)] sm:max-w-sm rounded-4xl bg-popover p-6 ring-1 ring-foreground/5">
+          {/* Title */}
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-4">
+            Add rider to {targetDriverName}
+          </p>
+
+          {/* All / Unassigned toggle */}
+          <div className="flex rounded-lg bg-secondary/50 p-0.5 mb-4">
+            <button
+              type="button"
+              onClick={() => onToggleFilter(true)}
+              className={cn(
+                "inline-flex flex-1 items-center justify-center rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                showOnlyUnassigned
+                  ? "bg-background shadow-sm text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Unassigned
+            </button>
+            <button
+              type="button"
+              onClick={() => onToggleFilter(false)}
+              className={cn(
+                "inline-flex flex-1 items-center justify-center rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                !showOnlyUnassigned
+                  ? "bg-background shadow-sm text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              All riders
+            </button>
+          </div>
+
+          {/* Rider list */}
+          <div className="max-h-[60vh] overflow-y-auto -mx-1 px-1 space-y-1 scrollbar-none">
+            {riders.length === 0 ? (
+              <p className="py-4 text-center text-xs text-muted-foreground">
+                No riders available
+              </p>
+            ) : (
+              riders.map((rider) => {
+                const isSelected = selectedRiderId === rider.userId;
+                return (
+                  <button
+                    key={rider.userId}
+                    type="button"
+                    onClick={() => setSelectedRiderId(isSelected ? null : rider.userId)}
+                    className={cn(
+                      "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors",
+                      isSelected
+                        ? "bg-primary/10 ring-1 ring-primary/30"
+                        : "hover:bg-secondary/40"
+                    )}
+                  >
+                    <Avatar size="sm">
+                      {rider.profile.avatar_url && (
+                        <AvatarImage
+                          src={rider.profile.avatar_url}
+                          alt={rider.profile.full_name}
+                        />
+                      )}
+                      <AvatarFallback>
+                        {getInitials(rider.profile.full_name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium">
+                        {rider.profile.full_name}
+                      </p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {rider.assignedTo
+                          ? rider.assignedTo.driverName
+                          : "Unassigned"}
+                      </p>
+                    </div>
+                    {!rider.assignedTo && (
+                      <span className="shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">
+                        Unassigned
+                      </span>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          {/* Action buttons */}
+          <div className="mt-4 flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 rounded-4xl border border-input bg-input/30 px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-input/50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!selectedRiderId}
+              onClick={() => {
+                if (selectedRiderId) onSelect(selectedRiderId);
+              }}
+              className={cn(
+                "flex-1 rounded-4xl px-4 py-2.5 text-sm font-medium transition-colors",
+                selectedRiderId
+                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                  : "bg-primary/40 text-primary-foreground/50 cursor-not-allowed"
+              )}
+            >
+              {selectedRiderId && riders.find((r) => r.userId === selectedRiderId)?.assignedTo
+                ? "Swap"
+                : "Assign"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
