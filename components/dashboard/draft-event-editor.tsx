@@ -154,7 +154,7 @@ export function DraftEventEditor({ event, stats }: DraftEventEditorProps): React
   }
 
   async function handleDelete(): Promise<void> {
-    if (!confirm("Delete this draft? This cannot be undone.")) return;
+    if (!confirm("Delete this event? This cannot be undone.")) return;
 
     await fetch(`/api/events/${event.id}`, { method: "DELETE" });
     router.refresh();
@@ -200,6 +200,10 @@ export function DraftEventEditor({ event, stats }: DraftEventEditorProps): React
               >
                 <HugeiconsIcon icon={Car01Icon} className="size-4" />
                 Carpool Assignment
+              </Button>
+              <Button onClick={handleDelete} variant="outline" className="w-full rounded-xl text-destructive hover:text-destructive">
+                <HugeiconsIcon icon={Delete02Icon} className="size-4" />
+                Delete Event
               </Button>
             </div>
             <EditEventDialog event={event} open={editOpen} onOpenChange={setEditOpen} />
