@@ -445,6 +445,28 @@ export function CarpoolAssignments({
     };
   }, [responses, carpools, leg]);
 
+  // Unassigned rider counts per leg (for tab badges)
+  const unassignedCounts = useMemo(() => {
+    const counts: Record<Leg, number> = { before: 0, after: 0 };
+    for (const legKey of ["before", "after"] as Leg[]) {
+      const roleField = legKey === "before" ? "before_role" : "after_role";
+      const legRiders = responses.filter((r) => r[roleField] === "rider");
+      const legDrivers = responses.filter((r) => r[roleField] === "driver");
+      const assignmentMap = new Map<string, string[]>();
+      for (const c of carpools) {
+        assignmentMap.set(c.driver_id, c.carpool_riders.map((cr) => cr.rider_id));
+      }
+      const assigned = new Set(
+        legDrivers.flatMap((d) => {
+          const riderIds = assignmentMap.get(d.user_id) ?? [];
+          return riderIds.filter((rid) => legRiders.some((r) => r.user_id === rid));
+        })
+      );
+      counts[legKey] = legRiders.filter((r) => !assigned.has(r.user_id)).length;
+    }
+    return counts;
+  }, [responses, carpools]);
+
   // Build full rider list with assignment status
   const allRiderEntries = useMemo(() => {
     const roleField = leg === "before" ? "before_role" : "after_role";
@@ -745,6 +767,9 @@ export function CarpoolAssignments({
               aria-label="Before event"
             >
               Before
+              {unassignedCounts.before > 0 && (
+                <span className="size-1.5 rounded-full bg-destructive ml-1" />
+              )}
             </button>
             <button
               type="button"
@@ -758,6 +783,9 @@ export function CarpoolAssignments({
               aria-label="After event"
             >
               After
+              {unassignedCounts.after > 0 && (
+                <span className="size-1.5 rounded-full bg-destructive ml-1" />
+              )}
             </button>
           </div>
 
