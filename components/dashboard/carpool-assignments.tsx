@@ -453,6 +453,8 @@ export function CarpoolAssignments({
       userId: r.user_id,
       profile: r.profiles,
       assigned: assignedRiderIds.has(r.user_id),
+      pickupLat: r.pickup_lat,
+      pickupLng: r.pickup_lng,
     })).sort((a, b) => {
       // Unassigned first
       if (a.assigned !== b.assigned) return a.assigned ? 1 : -1;
@@ -723,7 +725,7 @@ export function CarpoolAssignments({
           <h1 className="text-lg font-semibold">Carpool Assignment</h1>
           <Button size="sm" onClick={() => setShowSendConfirm(true)}>
             <HugeiconsIcon icon={SentIcon} className="size-4" strokeWidth={1.5} />
-            {sentAt ? "Send Update" : "Send"}
+            {sentAt ? "Review Update" : "Review"}
           </Button>
         </div>
 
@@ -1089,7 +1091,7 @@ export function CarpoolAssignments({
                       type="button"
                       onClick={() => {
                         setRiderDetailTarget({
-                          rider: { userId: rider.userId, profile: rider.profile, departureTime: null, pickupAddress: null, pickupLat: null, pickupLng: null, note: null },
+                          rider: { userId: rider.userId, profile: rider.profile, departureTime: null, pickupAddress: null, pickupLat: rider.pickupLat ?? null, pickupLng: rider.pickupLng ?? null, note: null },
                           currentDriver: assignedDriver
                             ? { userId: assignedDriver.driverId, name: assignedDriver.driverName }
                             : null,
@@ -1174,6 +1176,7 @@ export function CarpoolAssignments({
         rideHistory={rideHistory}
         onRemove={handleRemoveRider}
         onReassign={handleReassignRider}
+        eventCoords={eventCoords}
       />
 
       {/* Send confirmation overlay */}
@@ -1511,6 +1514,7 @@ function RiderDetailOverlay({
   rideHistory,
   onRemove,
   onReassign,
+  eventCoords,
 }: {
   open: boolean;
   onClose: () => void;
@@ -1520,6 +1524,7 @@ function RiderDetailOverlay({
   rideHistory: Map<string, number>;
   onRemove: (riderId: string) => void;
   onReassign: (riderId: string, driverId: string) => void;
+  eventCoords: { lat: number; lng: number } | null;
 }): React.ReactElement | null {
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -1552,19 +1557,74 @@ function RiderDetailOverlay({
     }
   }, [open]);
 
-  if (!mounted || !rider) return null;
-
   // Exclude the current driver from the reassignment list (show all if unassigned)
-  const availableDrivers = currentDriver
-    ? drivers.filter((d) => d.userId !== currentDriver.userId)
-    : drivers;
+  const availableDrivers = useMemo(() => {
+    return currentDriver
+      ? drivers.filter((d) => d.userId !== currentDriver.userId)
+      : drivers;
+  }, [drivers, currentDriver]);
 
   const selectedDriver = selectedDriverId
-    ? availableDrivers.find((d) => d.userId === selectedDriverId)
+    ? availableDrivers.find((d) => d.userId === selectedDriverId) ?? null
     : null;
   const isSelectedDriverFull = selectedDriver
     ? selectedDriver.assignedRiders.length >= selectedDriver.availableSeats && selectedDriver.availableSeats > 0
     : false;
+
+  // Compute added time per driver if this rider is added to their route
+  const addedTimePerDriver = useMemo(() => {
+    const results = new Map<string, number>();
+    if (!rider || rider.pickupLat == null || rider.pickupLng == null) return results;
+    for (const driver of availableDrivers) {
+      if (driver.pickupLat == null || driver.pickupLng == null) continue;
+      const existingCoords = driver.assignedRiders
+        .filter((r) => r.pickupLat != null && r.pickupLng != null)
+        .map((r) => ({ lat: r.pickupLat!, lng: r.pickupLng! }));
+      const current = nnRoute(driver.pickupLat, driver.pickupLng, existingCoords, eventCoords);
+      const withRider = nnRoute(driver.pickupLat, driver.pickupLng, [...existingCoords, { lat: rider.pickupLat, lng: rider.pickupLng }], eventCoords);
+      results.set(driver.userId, withRider.minutes - current.minutes);
+    }
+    return results;
+  }, [rider, availableDrivers, eventCoords]);
+
+  // Compute total route time for the selected driver (with this rider added)
+  const selectedDriverTotalMin = useMemo(() => {
+    if (!selectedDriver || !rider || selectedDriver.pickupLat == null || selectedDriver.pickupLng == null) return null;
+    const existingCoords = selectedDriver.assignedRiders
+      .filter((r) => r.pickupLat != null && r.pickupLng != null)
+      .map((r) => ({ lat: r.pickupLat!, lng: r.pickupLng! }));
+    const riderCoord = rider.pickupLat != null && rider.pickupLng != null
+      ? [{ lat: rider.pickupLat, lng: rider.pickupLng }]
+      : [];
+    // If replacing, remove the replaced rider's coords
+    const filteredCoords = replaceRiderId
+      ? existingCoords.filter((_, i) => selectedDriver.assignedRiders.filter((r) => r.pickupLat != null && r.pickupLng != null)[i]?.userId !== replaceRiderId)
+      : existingCoords;
+    return nnRoute(selectedDriver.pickupLat, selectedDriver.pickupLng, [...filteredCoords, ...riderCoord], eventCoords).minutes;
+  }, [selectedDriver, rider, replaceRiderId, eventCoords]);
+
+  // Compute time diff for replacing each existing rider in the selected driver's car
+  const replaceTimeDiffs = useMemo(() => {
+    const results = new Map<string, number>();
+    if (!selectedDriver || !rider || selectedDriver.pickupLat == null || selectedDriver.pickupLng == null) return results;
+    if (rider.pickupLat == null || rider.pickupLng == null) return results;
+
+    const allRiders = selectedDriver.assignedRiders.filter((r) => r.pickupLat != null && r.pickupLng != null);
+    const allCoords = allRiders.map((r) => ({ lat: r.pickupLat!, lng: r.pickupLng! }));
+    const currentMin = nnRoute(selectedDriver.pickupLat, selectedDriver.pickupLng, allCoords, eventCoords).minutes;
+
+    for (const existingRider of allRiders) {
+      // Replace this rider's coords with the new rider's coords
+      const swappedCoords = allCoords
+        .filter((_, i) => allRiders[i].userId !== existingRider.userId)
+        .concat({ lat: rider.pickupLat, lng: rider.pickupLng });
+      const swappedMin = nnRoute(selectedDriver.pickupLat, selectedDriver.pickupLng, swappedCoords, eventCoords).minutes;
+      results.set(existingRider.userId, swappedMin - currentMin);
+    }
+    return results;
+  }, [selectedDriver, rider, eventCoords]);
+
+  if (!mounted || !rider) return null;
 
   function handleDriverTap(driverId: string): void {
     setSelectedDriverId((prev) => (prev === driverId ? null : driverId));
@@ -1672,6 +1732,20 @@ function RiderDetailOverlay({
                         <p className="truncate text-xs font-medium">{driver.profile.full_name}</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
+                        {(() => {
+                          const added = addedTimePerDriver.get(driver.userId);
+                          if (added == null) return null;
+                          return (
+                            <span className={cn(
+                              "rounded-full px-2 py-0.5 text-[10px] font-medium",
+                              added <= 5 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                : added <= 15 ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                : "bg-destructive/10 text-destructive"
+                            )}>
+                              +{added} min
+                            </span>
+                          );
+                        })()}
                         <span className={cn(
                           "flex items-center gap-1 text-xs text-muted-foreground",
                           isFull && "line-through"
@@ -1726,7 +1800,21 @@ function RiderDetailOverlay({
                                   )}
                                   <AvatarFallback>{getInitials(r.profile.full_name)}</AvatarFallback>
                                 </Avatar>
-                                <p className="truncate text-xs">{r.profile.full_name}</p>
+                                <p className="truncate text-xs flex-1">{r.profile.full_name}</p>
+                                {(() => {
+                                  const diff = replaceTimeDiffs.get(r.userId);
+                                  if (diff == null) return null;
+                                  return (
+                                    <span className={cn(
+                                      "rounded-full px-2 py-0.5 text-[10px] font-medium shrink-0",
+                                      diff <= 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                        : diff <= 5 ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                        : "bg-destructive/10 text-destructive"
+                                    )}>
+                                      {diff <= 0 ? `${diff} min` : `+${diff} min`}
+                                    </span>
+                                  );
+                                })()}
                               </button>
                             ))}
                           </div>
@@ -1740,8 +1828,15 @@ function RiderDetailOverlay({
             )}
           </div>
 
+          {/* Total route time for selected driver */}
+          {selectedDriverId && selectedDriverTotalMin != null && !removeMode && (
+            <p className="text-xs text-muted-foreground mt-4 mb-1 text-center">
+              Est. total route: <span className="font-medium text-foreground">~{selectedDriverTotalMin} min</span>
+            </p>
+          )}
+
           {/* Action buttons */}
-          <div className="mt-4 flex gap-3">
+          <div className={cn("flex gap-3", selectedDriverId && selectedDriverTotalMin != null && !removeMode ? "mt-2" : "mt-4")}>
             <button
               type="button"
               onClick={onClose}
@@ -2009,15 +2104,44 @@ function SendConfirmOverlay({
 
   const onMapLoad = useCallback((map: google.maps.Map) => {
     setMapInstance(map);
-    const bounds = new google.maps.LatLngBounds();
-    if (eventCoords) bounds.extend(eventCoords);
+
+    // Collect all pickup points (drivers + riders + unassigned)
+    const points: google.maps.LatLngLiteral[] = [];
     for (const route of routeInfo) {
-      bounds.extend(route.driverPos);
-      for (const r of route.riderPositions) bounds.extend(r);
+      points.push(route.driverPos);
+      for (const r of route.riderPositions) points.push(r);
     }
     for (const rider of unassignedRiders) {
       if (rider.pickupLat != null && rider.pickupLng != null) {
-        bounds.extend({ lat: rider.pickupLat, lng: rider.pickupLng });
+        points.push({ lat: rider.pickupLat, lng: rider.pickupLng });
+      }
+    }
+
+    if (points.length === 0) {
+      if (eventCoords) map.setCenter(eventCoords);
+      return;
+    }
+
+    // Find the densest cluster: for each point, count neighbors within ~4km
+    const CLUSTER_RADIUS_KM = 4;
+    let bestIdx = 0;
+    let bestCount = 0;
+    for (let i = 0; i < points.length; i++) {
+      let count = 0;
+      for (let j = 0; j < points.length; j++) {
+        if (haversineKm(points[i], points[j]) <= CLUSTER_RADIUS_KM) count++;
+      }
+      if (count > bestCount) {
+        bestCount = count;
+        bestIdx = i;
+      }
+    }
+
+    // Build bounds from points in the densest cluster
+    const bounds = new google.maps.LatLngBounds();
+    for (const p of points) {
+      if (haversineKm(points[bestIdx], p) <= CLUSTER_RADIUS_KM) {
+        bounds.extend(p);
       }
     }
     if (!bounds.isEmpty()) map.fitBounds(bounds, 50);
