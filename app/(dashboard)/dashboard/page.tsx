@@ -43,7 +43,9 @@ export default async function DashboardPage(): Promise<React.ReactElement> {
     const { data: responses } = await supabase
       .from("responses")
       .select("role, before_role, after_role")
-      .eq("event_id", activeEvent.id);
+      .eq("event_id", activeEvent.id) as {
+      data: { role: string; before_role: string | null; after_role: string | null }[] | null;
+    };
 
     const rows = responses ?? [];
     stats = {
