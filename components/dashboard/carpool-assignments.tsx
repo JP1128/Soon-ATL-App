@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { useJsApiLoader } from "@react-google-maps/api";
+import { GoogleMap, useJsApiLoader } from "@react-google-maps/api";
 import { Input } from "@/components/ui/input";
 import {
   Avatar,
@@ -10,9 +10,65 @@ import {
   AvatarFallback,
 } from "@/components/ui/avatar";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowDown01Icon, Car01Icon, SteeringIcon, UserGroupIcon, UserAdd01Icon, UserRemove01Icon, SentIcon, MapsSearchIcon, TextIcon, Clock01Icon, AlertCircleIcon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon, Car01Icon, SteeringIcon, UserGroupIcon, UserAdd01Icon, UserRemove01Icon, SentIcon, MapsSearchIcon, TextIcon, Clock01Icon, AlertCircleIcon, Navigation03Icon } from "@hugeicons/core-free-icons";
 import { cn, formatPhoneNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+
+/* ── Haversine + route helpers (module-level, no hooks) ────── */
+const ROAD_FACTOR = 1.3;
+const AVG_SPEED_KMH = 55;
+
+function haversineKm(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number }
+): number {
+  const R = 6371;
+  const toRad = (deg: number): number => (deg * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+  const h =
+    sinLat * sinLat +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * sinLng * sinLng;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/** Nearest-neighbor chain: start → pickups → optional destination.
+ *  Returns { minutes, km } */
+function nnRoute(
+  startLat: number,
+  startLng: number,
+  coords: Array<{ lat: number; lng: number }>,
+  destination?: { lat: number; lng: number } | null
+): { minutes: number; km: number } {
+  if (coords.length === 0 && !destination) return { minutes: 0, km: 0 };
+  let totalKm = 0;
+  let current = { lat: startLat, lng: startLng };
+  const remaining = [...coords];
+  while (remaining.length > 0) {
+    let bestIdx = 0;
+    let bestKm = Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const km = haversineKm(current, remaining[i]);
+      if (km < bestKm) {
+        bestKm = km;
+        bestIdx = i;
+      }
+    }
+    totalKm += bestKm;
+    current = remaining[bestIdx];
+    remaining.splice(bestIdx, 1);
+  }
+  if (destination) {
+    totalKm += haversineKm(current, destination);
+  }
+  const roadKm = totalKm * ROAD_FACTOR;
+  return {
+    km: Math.round(roadKm),
+    minutes: Math.round((roadKm / AVG_SPEED_KMH) * 60),
+  };
+}
 
 interface ProfileData {
   id: string;
@@ -220,6 +276,20 @@ export function CarpoolAssignments({
     libraries: GOOGLE_MAPS_LIBRARIES,
     version: "weekly",
   });
+
+  // Geocode event location once
+  const [eventCoords, setEventCoords] = useState<{ lat: number; lng: number } | null>(null);
+  useEffect(() => {
+    if (!mapsLoaded || !eventLocation) return;
+    const geocoder = new google.maps.Geocoder();
+    let cancelled = false;
+    geocoder.geocode({ address: eventLocation }, (results, status) => {
+      if (cancelled || status !== "OK" || !results?.[0]) return;
+      const loc = results[0].geometry.location;
+      setEventCoords({ lat: loc.lat(), lng: loc.lng() });
+    });
+    return (): void => { cancelled = true; };
+  }, [mapsLoaded, eventLocation]);
 
   // Resolve place names for driver pickup locations
   useEffect(() => {
@@ -881,6 +951,23 @@ export function CarpoolAssignments({
                                 )}
                               </div>
                             )}
+                            {(() => {
+                              // Route stats: driver → rider pickups → event
+                              if (driver.pickupLat == null || driver.pickupLng == null) return null;
+                              const riderCoords = driver.assignedRiders
+                                .filter((r) => r.pickupLat != null && r.pickupLng != null)
+                                .map((r) => ({ lat: r.pickupLat!, lng: r.pickupLng! }));
+                              const route = nnRoute(driver.pickupLat!, driver.pickupLng!, riderCoords, eventCoords);
+                              if (route.minutes === 0) return null;
+                              return (
+                                <div className="flex items-center gap-1.5 pb-1.5">
+                                  <HugeiconsIcon icon={Navigation03Icon} className="size-3.5 text-muted-foreground shrink-0" strokeWidth={1.5} />
+                                  <p className="text-[11px] text-muted-foreground">
+                                    ~{route.minutes} min · {Math.round(route.km * 0.621371)} mi
+                                  </p>
+                                </div>
+                              );
+                            })()}
                             {driver.assignedRiders.length > 0 && (() => {
                               const riderTimes = driver.assignedRiders
                                 .filter((r) => r.departureTime)
@@ -1074,8 +1161,7 @@ export function CarpoolAssignments({
         driverLat={addRiderTarget?.driverLat ?? null}
         driverLng={addRiderTarget?.driverLng ?? null}
         assignedRiderCoords={addRiderTarget?.assignedRiderCoords ?? []}
-        eventLocation={eventLocation}
-        isGoogleLoaded={mapsLoaded}
+        eventCoords={eventCoords}
       />
 
       {/* Rider detail overlay */}
@@ -1098,6 +1184,8 @@ export function CarpoolAssignments({
         isUpdate={sentAt !== null}
         unassignedRiders={unassignedRiders}
         sending={sending}
+        drivers={drivers}
+        eventCoords={eventCoords}
       />
     </div>
   );
@@ -1127,8 +1215,7 @@ function RiderSelectionOverlay({
   driverLat,
   driverLng,
   assignedRiderCoords,
-  eventLocation,
-  isGoogleLoaded,
+  eventCoords,
 }: {
   open: boolean;
   onClose: () => void;
@@ -1141,8 +1228,7 @@ function RiderSelectionOverlay({
   driverLat: number | null;
   driverLng: number | null;
   assignedRiderCoords: Array<{ lat: number; lng: number }>;
-  eventLocation: string;
-  isGoogleLoaded: boolean;
+  eventCoords: { lat: number; lng: number } | null;
 }): React.ReactElement | null {
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -1189,29 +1275,11 @@ function RiderSelectionOverlay({
     }
   }, [open]);
 
-  // Haversine distance in km
-  const haversineKm = useCallback(
-    (a: { lat: number; lng: number }, b: { lat: number; lng: number }): number => {
-      const R = 6371;
-      const toRad = (deg: number): number => (deg * Math.PI) / 180;
-      const dLat = toRad(b.lat - a.lat);
-      const dLng = toRad(b.lng - a.lng);
-      const sinLat = Math.sin(dLat / 2);
-      const sinLng = Math.sin(dLng / 2);
-      const h = sinLat * sinLat + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * sinLng * sinLng;
-      return 2 * R * Math.asin(Math.sqrt(h));
-    },
-    []
-  );
-
   // Estimate detour times — recalculates when selection changes
   const detourMinutes = useMemo(() => {
     if (!open || !driverLat || !driverLng) return new Map<string, number>();
     const ridersWithCoords = riders.filter((r) => r.pickupLat != null && r.pickupLng != null);
     if (ridersWithCoords.length === 0) return new Map<string, number>();
-
-    const ROAD_FACTOR = 1.3;
-    const AVG_SPEED_KMH = 55;
 
     // Build list of pickup points: driver + already-selected riders
     const pickupPoints: Array<{ lat: number; lng: number }> = [{ lat: driverLat, lng: driverLng }];
@@ -1223,7 +1291,6 @@ function RiderSelectionOverlay({
     const results = new Map<string, number>();
     for (const rider of ridersWithCoords) {
       const riderLoc = { lat: rider.pickupLat!, lng: rider.pickupLng! };
-      // Distance from nearest pickup point (driver or any selected rider)
       let minKm = Infinity;
       for (const pt of pickupPoints) {
         const km = haversineKm(pt, riderLoc);
@@ -1234,59 +1301,14 @@ function RiderSelectionOverlay({
     }
 
     return results;
-  }, [open, driverLat, driverLng, riders, selectedRiderIds, haversineKm]);
-
-  // Geocode event location to get coordinates
-  const [eventCoords, setEventCoords] = useState<{ lat: number; lng: number } | null>(null);
-  useEffect(() => {
-    if (!open || !isGoogleLoaded || !eventLocation) return;
-    const geocoder = new google.maps.Geocoder();
-    let cancelled = false;
-    geocoder.geocode({ address: eventLocation }, (results, status) => {
-      if (cancelled || status !== "OK" || !results?.[0]) return;
-      const loc = results[0].geometry.location;
-      setEventCoords({ lat: loc.lat(), lng: loc.lng() });
-    });
-    return (): void => { cancelled = true; };
-  }, [open, isGoogleLoaded, eventLocation]);
-
-  // Nearest-neighbor chain route time helper (optionally includes final leg to destination)
-  const nnRouteMin = useCallback((
-    startLat: number,
-    startLng: number,
-    coords: Array<{ lat: number; lng: number }>,
-    destination?: { lat: number; lng: number } | null
-  ): number => {
-    if (coords.length === 0 && !destination) return 0;
-    const ROAD_FACTOR = 1.3;
-    const AVG_SPEED_KMH = 55;
-    let totalKm = 0;
-    let current = { lat: startLat, lng: startLng };
-    const remaining = [...coords];
-    while (remaining.length > 0) {
-      let bestIdx = 0;
-      let bestKm = Infinity;
-      for (let i = 0; i < remaining.length; i++) {
-        const km = haversineKm(current, remaining[i]);
-        if (km < bestKm) { bestKm = km; bestIdx = i; }
-      }
-      totalKm += bestKm;
-      current = remaining[bestIdx];
-      remaining.splice(bestIdx, 1);
-    }
-    // Add final leg to destination
-    if (destination) {
-      totalKm += haversineKm(current, destination);
-    }
-    return Math.round((totalKm * ROAD_FACTOR / AVG_SPEED_KMH) * 60);
-  }, [haversineKm]);
+  }, [open, driverLat, driverLng, riders, selectedRiderIds]);
 
   // Current route time for already-assigned riders → event
   const currentRouteMin = useMemo(() => {
     if (!driverLat || !driverLng) return 0;
     if (assignedRiderCoords.length === 0 && !eventCoords) return 0;
-    return nnRouteMin(driverLat, driverLng, assignedRiderCoords, eventCoords);
-  }, [driverLat, driverLng, assignedRiderCoords, eventCoords, nnRouteMin]);
+    return nnRoute(driverLat, driverLng, assignedRiderCoords, eventCoords).minutes;
+  }, [driverLat, driverLng, assignedRiderCoords, eventCoords]);
 
   // Total estimated route time for assigned + selected riders → event
   const totalRouteMin = useMemo(() => {
@@ -1302,8 +1324,8 @@ function RiderSelectionOverlay({
     if (selectedCoords.length === 0) return 0;
 
     const allCoords = [...assignedRiderCoords, ...selectedCoords];
-    return nnRouteMin(driverLat, driverLng, allCoords, eventCoords);
-  }, [driverLat, driverLng, riders, selectedRiderIds, assignedRiderCoords, eventCoords, nnRouteMin]);
+    return nnRoute(driverLat, driverLng, allCoords, eventCoords).minutes;
+  }, [driverLat, driverLng, riders, selectedRiderIds, assignedRiderCoords, eventCoords]);
 
   if (!mounted) return null;
 
@@ -1767,6 +1789,38 @@ function RiderDetailOverlay({
 /*  Send confirmation overlay                                         */
 /* ------------------------------------------------------------------ */
 
+const ROUTE_COLORS = ["#4285F4", "#34A853", "#FBBC04", "#EA4335", "#FF6D01", "#46BDC6", "#7B1FA2", "#C2185B"];
+
+/** Muted map style to match app design */
+const MAP_STYLES: google.maps.MapTypeStyle[] = [
+  { elementType: "geometry", stylers: [{ color: "#f5f5f5" }] },
+  { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#9e9e9e" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#ffffff" }] },
+  { featureType: "administrative.land_parcel", stylers: [{ visibility: "off" }] },
+  { featureType: "administrative.land_parcel", elementType: "labels.text.fill", stylers: [{ color: "#bdbdbd" }] },
+  { featureType: "poi", stylers: [{ visibility: "off" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#e0e0e0" }] },
+  { featureType: "road.arterial", elementType: "labels", stylers: [{ visibility: "off" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#dadada" }] },
+  { featureType: "road.highway", elementType: "labels", stylers: [{ visibility: "off" }] },
+  { featureType: "road.local", stylers: [{ visibility: "simplified" }] },
+  { featureType: "transit", stylers: [{ visibility: "off" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#c9c9c9" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#9e9e9e" }] },
+];
+
+/** Route.computeRoutes() — typed ahead of @types/google.maps */
+interface RoutesAPIRoute {
+  computeRoutes(request: {
+    origin: google.maps.LatLng;
+    destination: google.maps.LatLng;
+    intermediates?: Array<{ location: google.maps.LatLng }>;
+    travelMode?: string;
+    fields?: string[];
+  }): Promise<{ routes: Array<{ createPolylines(): google.maps.Polyline[] }> }>;
+}
+
 function SendConfirmOverlay({
   open,
   onClose,
@@ -1774,6 +1828,8 @@ function SendConfirmOverlay({
   isUpdate,
   unassignedRiders,
   sending,
+  drivers,
+  eventCoords,
 }: {
   open: boolean;
   onClose: () => void;
@@ -1781,9 +1837,14 @@ function SendConfirmOverlay({
   isUpdate: boolean;
   unassignedRiders: RiderEntry[];
   sending: boolean;
+  drivers: DriverEntry[];
+  eventCoords: { lat: number; lng: number } | null;
 }): React.ReactElement | null {
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
+  const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
+  const markersRef = useRef<google.maps.Marker[]>([]);
+  const polylinesRef = useRef<google.maps.Polyline[]>([]);
 
   useEffect(() => {
     if (open) {
@@ -1807,9 +1868,165 @@ function SendConfirmOverlay({
     }
   }, [open]);
 
+  // Static route info per driver (markers, colors)
+  const routeInfo = useMemo(() => {
+    return drivers
+      .filter((d) => d.pickupLat != null && d.pickupLng != null)
+      .map((driver, i) => {
+        const color = ROUTE_COLORS[i % ROUTE_COLORS.length];
+        const driverPos = { lat: driver.pickupLat!, lng: driver.pickupLng! };
+        const riderPositions = driver.assignedRiders
+          .filter((r) => r.pickupLat != null && r.pickupLng != null)
+          .map((r) => ({ lat: r.pickupLat!, lng: r.pickupLng!, name: r.profile.full_name }));
+        return { driverId: driver.userId, driverName: driver.profile.full_name, color, driverPos, riderPositions };
+      });
+  }, [drivers]);
+
+  function svgIcon(svg: string, size: number): google.maps.Icon {
+    return {
+      url: `data:image/svg+xml,${encodeURIComponent(svg)}`,
+      scaledSize: new google.maps.Size(size, size),
+      anchor: new google.maps.Point(size / 2, size / 2),
+    };
+  }
+
+  // Create markers imperatively when the map instance is ready
+  useEffect(() => {
+    const map = mapInstance;
+    if (!map) return;
+
+    // Clear previous markers
+    for (const m of markersRef.current) m.setMap(null);
+    markersRef.current = [];
+
+    // Destination marker — dark pin with white inner ring
+    if (eventCoords) {
+      markersRef.current.push(new google.maps.Marker({
+        map,
+        position: eventCoords,
+        title: "Destination",
+        icon: svgIcon('<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36"><circle cx="18" cy="18" r="15" fill="#1a1a1a" stroke="white" stroke-width="3"/><circle cx="18" cy="18" r="5" fill="white"/></svg>', 36),
+        zIndex: 1000,
+      }));
+    }
+
+    // Driver + rider markers
+    for (const route of routeInfo) {
+      markersRef.current.push(new google.maps.Marker({
+        map,
+        position: route.driverPos,
+        title: route.driverName,
+        icon: svgIcon(`<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="13" fill="${route.color}" stroke="white" stroke-width="2.5"/><text x="15" y="20" text-anchor="middle" fill="white" font-size="14" font-weight="600" font-family="Figtree,system-ui,sans-serif">D</text></svg>`, 30),
+        zIndex: 900,
+      }));
+
+      for (const r of route.riderPositions) {
+        markersRef.current.push(new google.maps.Marker({
+          map,
+          position: r,
+          title: r.name,
+          icon: svgIcon(`<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="9" fill="${route.color}" stroke="white" stroke-width="2.5"/></svg>`, 22),
+          zIndex: 800,
+        }));
+      }
+    }
+
+    // Unassigned riders — muted gray with dashed stroke
+    for (const rider of unassignedRiders) {
+      if (rider.pickupLat != null && rider.pickupLng != null) {
+        markersRef.current.push(new google.maps.Marker({
+          map,
+          position: { lat: rider.pickupLat, lng: rider.pickupLng },
+          title: `${rider.profile.full_name} (unassigned)`,
+          icon: svgIcon('<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="9" fill="#d4d4d4" stroke="#a3a3a3" stroke-width="2" stroke-dasharray="4 2"/></svg>', 22),
+          zIndex: 700,
+        }));
+      }
+    }
+
+    return () => {
+      for (const m of markersRef.current) m.setMap(null);
+      markersRef.current = [];
+    };
+  }, [mapInstance, routeInfo, eventCoords, unassignedRiders]);
+
+  // Fetch road-following routes using the Routes API
+  useEffect(() => {
+    const map = mapInstance;
+    if (!map || !open || routeInfo.length === 0 || !eventCoords) return;
+    let cancelled = false;
+
+    async function fetchRoutes(): Promise<void> {
+      const { Route } = (await google.maps.importLibrary("routes")) as unknown as { Route: RoutesAPIRoute };
+
+      await Promise.all(
+        routeInfo.map(async (route) => {
+          const intermediates = route.riderPositions.map((r) => ({
+            location: new google.maps.LatLng(r.lat, r.lng),
+          }));
+          try {
+            const { routes: computed } = await Route.computeRoutes({
+              origin: new google.maps.LatLng(route.driverPos.lat, route.driverPos.lng),
+              destination: new google.maps.LatLng(eventCoords!.lat, eventCoords!.lng),
+              intermediates,
+              travelMode: "DRIVING" as google.maps.TravelMode,
+              fields: ["path"],
+            });
+            if (!cancelled && computed[0]) {
+              const polylines = computed[0].createPolylines();
+              for (const p of polylines) {
+                p.setOptions({ strokeColor: route.color, strokeOpacity: 0.8, strokeWeight: 3 });
+                p.setMap(map);
+                polylinesRef.current.push(p);
+              }
+            }
+          } catch {
+            // Fallback: straight line
+            if (!cancelled) {
+              const fallbackPath = [route.driverPos, ...route.riderPositions];
+              if (eventCoords) fallbackPath.push(eventCoords);
+              const p = new google.maps.Polyline({
+                path: fallbackPath,
+                strokeColor: route.color,
+                strokeOpacity: 0.8,
+                strokeWeight: 3,
+                map,
+              });
+              polylinesRef.current.push(p);
+            }
+          }
+        })
+      );
+    }
+    fetchRoutes();
+
+    return () => {
+      cancelled = true;
+      for (const p of polylinesRef.current) p.setMap(null);
+      polylinesRef.current = [];
+    };
+  }, [mapInstance, open, routeInfo, eventCoords]);
+
+  const onMapLoad = useCallback((map: google.maps.Map) => {
+    setMapInstance(map);
+    const bounds = new google.maps.LatLngBounds();
+    if (eventCoords) bounds.extend(eventCoords);
+    for (const route of routeInfo) {
+      bounds.extend(route.driverPos);
+      for (const r of route.riderPositions) bounds.extend(r);
+    }
+    for (const rider of unassignedRiders) {
+      if (rider.pickupLat != null && rider.pickupLng != null) {
+        bounds.extend({ lat: rider.pickupLat, lng: rider.pickupLng });
+      }
+    }
+    if (!bounds.isEmpty()) map.fitBounds(bounds, 50);
+  }, [routeInfo, eventCoords, unassignedRiders]);
+
   if (!mounted) return null;
 
   const hasUnassigned = unassignedRiders.length > 0;
+  const center = eventCoords ?? { lat: 33.749, lng: -84.388 };
 
   return createPortal(
     <div className="fixed inset-0 z-60" role="dialog" aria-modal="true">
@@ -1824,75 +2041,92 @@ function SendConfirmOverlay({
       {/* Content */}
       <div
         className={cn(
-          "absolute inset-0 flex items-center justify-center pointer-events-none transition-all duration-100",
+          "absolute inset-0 flex items-center justify-center p-4 pointer-events-none transition-all duration-100",
           visible ? "opacity-100 scale-100" : "opacity-0 scale-95"
         )}
       >
-        <div className="pointer-events-auto w-full max-w-[calc(100%-2rem)] sm:max-w-sm rounded-4xl bg-popover p-6 ring-1 ring-foreground/5">
-          {/* Title */}
-          <p className="text-sm font-semibold mb-1">
-            {isUpdate ? "Send Update?" : "Send Carpool Assignments?"}
-          </p>
+        <div className="pointer-events-auto flex flex-col w-full max-w-lg h-full rounded-3xl bg-popover ring-1 ring-foreground/5 overflow-hidden">
+          {/* Map */}
+          <div className="flex-1 min-h-0 rounded-t-3xl overflow-hidden">
+            <GoogleMap
+              mapContainerStyle={{ width: "100%", height: "100%" }}
+              center={center}
+              zoom={10}
+              onLoad={onMapLoad}
+              options={{
+                disableDefaultUI: true,
+                zoomControl: true,
+                mapTypeControl: false,
+                streetViewControl: false,
+                fullscreenControl: false,
+                styles: MAP_STYLES,
+                backgroundColor: "#f5f5f5",
+              }}
+            />
+          </div>
 
-          {/* Unassigned riders warning */}
-          {hasUnassigned && (
-            <div className="mt-4 mb-2">
-              {/* Stacked avatars */}
-              <div className="flex items-center -space-x-2 mb-3">
-                {unassignedRiders.slice(0, 5).map((rider) => (
-                  <Avatar key={rider.userId} size="sm" className="ring-2 ring-popover">
-                    {rider.profile.avatar_url && (
-                      <AvatarImage src={rider.profile.avatar_url} alt={rider.profile.full_name} />
-                    )}
-                    <AvatarFallback>{getInitials(rider.profile.full_name)}</AvatarFallback>
-                  </Avatar>
-                ))}
-                {unassignedRiders.length > 5 && (
-                  <div className="flex items-center justify-center size-8 rounded-full bg-secondary text-[10px] font-medium text-muted-foreground ring-2 ring-popover">
-                    +{unassignedRiders.length - 5}
-                  </div>
-                )}
+          {/* Bottom section */}
+          <div className="flex-none p-5 space-y-3">
+            <p className="text-sm font-semibold">
+              {isUpdate ? "Send Update?" : "Send Carpool Assignments?"}
+            </p>
+
+            {hasUnassigned && (
+              <div>
+                <div className="flex items-center -space-x-2 mb-2">
+                  {unassignedRiders.slice(0, 5).map((rider) => (
+                    <Avatar key={rider.userId} size="sm" className="ring-2 ring-popover">
+                      {rider.profile.avatar_url && (
+                        <AvatarImage src={rider.profile.avatar_url} alt={rider.profile.full_name} />
+                      )}
+                      <AvatarFallback>{getInitials(rider.profile.full_name)}</AvatarFallback>
+                    </Avatar>
+                  ))}
+                  {unassignedRiders.length > 5 && (
+                    <div className="flex items-center justify-center size-8 rounded-full bg-secondary text-[10px] font-medium text-muted-foreground ring-2 ring-popover">
+                      +{unassignedRiders.length - 5}
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-destructive">
+                  {unassignedRiders.length === 1
+                    ? "There is 1 unassigned rider."
+                    : `There are ${unassignedRiders.length} unassigned riders.`}
+                </p>
               </div>
-              <p className="text-xs text-destructive">
-                {unassignedRiders.length === 1
-                  ? "There is 1 unassigned rider. Are you sure you want to send?"
-                  : `There are ${unassignedRiders.length} unassigned riders. Are you sure you want to send?`}
+            )}
+
+            {isUpdate && (
+              <p className="text-xs text-muted-foreground">
+                Only affected members will be notified.
               </p>
+            )}
+
+            {!hasUnassigned && !isUpdate && (
+              <p className="text-xs text-muted-foreground">
+                This will send assignments to all members.
+              </p>
+            )}
+
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={sending}
+                className="flex-1 rounded-4xl border border-input bg-input/30 px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-input/50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onConfirm}
+                disabled={sending}
+                className="flex-1 rounded-4xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                <HugeiconsIcon icon={SentIcon} className="size-4 inline-block align-[-1px] mr-1" strokeWidth={1.5} />
+                {sending ? "Sending…" : isUpdate ? "Send Update" : "Send"}
+              </button>
             </div>
-          )}
-
-          {/* Update notice */}
-          {isUpdate && (
-            <p className="text-xs text-muted-foreground mt-3">
-              Only the members affected by the changes will be notified of this update.
-            </p>
-          )}
-
-          {/* No issues */}
-          {!hasUnassigned && !isUpdate && (
-            <p className="text-xs text-muted-foreground">
-              This will send the carpool assignments to all members.
-            </p>
-          )}
-
-          {/* Action buttons */}
-          <div className="mt-5 flex gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={sending}
-              className="flex-1 rounded-4xl border border-input bg-input/30 px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-input/50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={onConfirm}
-              disabled={sending}
-              className="flex-1 rounded-4xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-            >
-              {sending ? "Sending…" : isUpdate ? "Send Update" : "Send"}
-            </button>
           </div>
         </div>
       </div>
