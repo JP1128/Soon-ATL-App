@@ -3,7 +3,6 @@ import { formatDisplayAddress } from "@/lib/utils";
 import { LoginButton } from "@/components/login-button";
 import { ActiveEventCard } from "@/components/active-event-card";
 import { SubmittedEventCard } from "@/components/submitted-event-card";
-import { RealtimeEventRefresh } from "@/components/realtime-event-refresh";
 import type { Event, Profile, Response, PublishedCarpoolEntry } from "@/types/database";
 
 type UserEventStatus = "needs-response" | "submitted" | "ride-assigned";
@@ -39,7 +38,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
 
   // Determine user's status for the active event
   let userStatus: UserEventStatus = "needs-response";
-  let userResponse: Pick<Response, "id" | "role" | "before_role" | "after_role" | "pickup_address" | "pickup_lat" | "pickup_lng" | "return_address" | "return_lat" | "return_lng" | "available_seats" | "departure_time" | "note"> | null = null;
+  let userResponse: Pick<Response, "id" | "role" | "before_role" | "after_role" | "pickup_address" | "pickup_lat" | "pickup_lng" | "return_address" | "return_lat" | "return_lng" | "available_seats" | "departure_time"> | null = null;
   let beforeAssignedRiders: { id: string; full_name: string; avatar_url: string | null; phone_number: string | null; pickup_lat: number | null; pickup_lng: number | null; pickup_address: string | null; return_lat: number | null; return_lng: number | null; return_address: string | null }[] = [];
   let afterAssignedRiders: { id: string; full_name: string; avatar_url: string | null; phone_number: string | null; pickup_lat: number | null; pickup_lng: number | null; pickup_address: string | null; return_lat: number | null; return_lng: number | null; return_address: string | null }[] = [];
   let beforeAssignedDriver: { full_name: string; avatar_url: string | null; pickup_lat: number | null; pickup_lng: number | null } | null = null;
@@ -49,10 +48,10 @@ export default async function HomePage(): Promise<React.ReactElement> {
   if (user && activeEvent) {
     const { data: response } = await supabase
       .from("responses")
-      .select("id, role, before_role, after_role, pickup_address, pickup_lat, pickup_lng, return_address, return_lat, return_lng, available_seats, departure_time, note")
+      .select("id, role, before_role, after_role, pickup_address, pickup_lat, pickup_lng, return_address, return_lat, return_lng, available_seats, departure_time")
       .eq("event_id", activeEvent.id)
       .eq("user_id", user.id)
-      .maybeSingle() as { data: Pick<Response, "id" | "role" | "before_role" | "after_role" | "pickup_address" | "pickup_lat" | "pickup_lng" | "return_address" | "return_lat" | "return_lng" | "available_seats" | "departure_time" | "note"> | null };
+      .maybeSingle() as { data: Pick<Response, "id" | "role" | "before_role" | "after_role" | "pickup_address" | "pickup_lat" | "pickup_lng" | "return_address" | "return_lat" | "return_lng" | "available_seats" | "departure_time"> | null };
     userResponse = response;
 
     if (response) {
@@ -165,7 +164,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
   const hasSubmitted = userStatus === "submitted" || userStatus === "ride-assigned";
 
   return (
-    <div className={`flex w-full max-w-lg flex-col items-center px-6 ${hasSubmitted ? "flex-1 min-h-0 pt-6 pb-4" : "flex-1 justify-center"}`}>
+    <div className={`flex w-full max-w-lg flex-col items-center px-6 ${hasSubmitted ? "flex-1 pt-6 pb-4" : "flex-1 justify-center"}`}>
       {/* Brand — hidden after submission */}
       {!hasSubmitted && (
         <>
@@ -179,7 +178,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
       )}
 
       {/* Main content area */}
-      <div className={`${hasSubmitted ? "flex-1 min-h-0" : "mt-6 tall:mt-8 xtall:mt-10"} flex w-full flex-col items-center gap-4`}>
+      <div className={`${hasSubmitted ? "flex-1" : "mt-6 tall:mt-8 xtall:mt-10"} flex w-full flex-col items-center gap-4`}>
         {!user && <LoginButton />}
         {user && activeEvent && hasSubmitted && userResponse && (
           <SubmittedEventCard
@@ -207,7 +206,6 @@ export default async function HomePage(): Promise<React.ReactElement> {
             pickupLng={userResponse.pickup_lng}
             returnLat={userResponse.return_lat}
             returnLng={userResponse.return_lng}
-            note={userResponse.note}
           />
         )}
         {user && activeEvent && !hasSubmitted && (
@@ -227,12 +225,6 @@ export default async function HomePage(): Promise<React.ReactElement> {
         )}
         {user && !activeEvent && (
           <p className="text-sm text-muted-foreground">No open events right now.</p>
-        )}
-        {user && activeEvent && (
-          <RealtimeEventRefresh
-            eventId={activeEvent.id}
-            carpoolsSentAt={activeEvent.carpools_sent_at}
-          />
         )}
       </div>
     </div>

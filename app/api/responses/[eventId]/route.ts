@@ -198,8 +198,8 @@ export async function POST(request: Request, { params }: RouteParams): Promise<N
   if (organizers && organizers.length > 0) {
     const organizerIds = organizers.map((o) => o.id);
     notifyUsers(supabase, organizerIds, {
-      title: eventTitle,
-      body: `${submitterName} has responded to ${eventTitle} form. There are ${unassignedCount} unassigned riders. Please review the carpool assignment.`,
+      title: `${submitterName} responded — ${unassignedCount} unassigned`,
+      body: "Review the carpool assignments.",
       url: `/dashboard/events/${eventId}`,
       tag: `response-${eventId}`,
     }).catch((err) => console.error("Failed to send response notification:", err));

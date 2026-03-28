@@ -719,10 +719,9 @@ export function CarpoolDetailView({
       {/* Send button (drivers only) */}
       {isDriver && riders.length > 0 && (
         <div className="mt-auto px-5 pb-5 pt-3">
-          {carpoolsSentAt && (
+          {sentRiders.size > 0 && !needsSend && (
             <p className="mb-2 text-center text-[11px] text-muted-foreground">
-              Last sent {new Date(carpoolsSentAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}{" "}
-              at {new Date(carpoolsSentAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+              Pickup order sent
             </p>
           )}
           <Button

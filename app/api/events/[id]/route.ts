@@ -103,8 +103,8 @@ export async function PATCH(request: Request, { params }: RouteParams): Promise<
     if (allProfiles && allProfiles.length > 0) {
       const allUserIds = allProfiles.map((p) => p.id);
       notifyUsers(supabase, allUserIds, {
-        title: "Soon ATL",
-        body: `Form for ${eventTitle} is open! Check the home page for the form!`,
+        title: `${eventTitle} form is open!`,
+        body: "Fill out the carpool form on the home page.",
         url: "/",
         tag: `event-open-${id}`,
       }).catch((err) => console.error("Failed to send event open notifications:", err));

@@ -259,9 +259,9 @@ export async function PATCH(
   // First, fetch the old published snapshot and event title for diff-based notifications
   const { data: eventData } = await supabase
     .from("events")
-    .select("title, published_carpools")
+    .select("published_carpools")
     .eq("id", eventId)
-    .single() as { data: { title: string; published_carpools: { before: PublishedCarpoolEntry[]; after: PublishedCarpoolEntry[] } | null } | null };
+    .single() as { data: { published_carpools: { before: PublishedCarpoolEntry[]; after: PublishedCarpoolEntry[] } | null } | null };
 
   const { data: carpools } = await supabase
     .from("carpools")
@@ -357,7 +357,6 @@ export async function PATCH(
     }
   }
 
-  const eventTitle = eventData?.title ?? "the event";
   const notifications: Array<{ userId: string; payload: PushPayload }> = [];
 
   // --- Rider notifications ---
@@ -370,13 +369,13 @@ export async function PATCH(
       // New assignment: rider didn't have a driver before
       notifications.push({
         userId: riderId,
-        payload: { title: eventTitle, body: `${driverName} is your driver for ${eventTitle}`, url: "/", tag: `carpool-rider-${eventId}` },
+        payload: { title: `${driverName} is your driver`, body: "Review your carpool assignment.", url: "/", tag: `carpool-rider-${eventId}` },
       });
     } else if (oldDriverId !== newDriverId) {
       // Driver changed
       notifications.push({
         userId: riderId,
-        payload: { title: eventTitle, body: `${driverName} is your new driver`, url: "/", tag: `carpool-rider-${eventId}` },
+        payload: { title: `${driverName} is your new driver`, body: "Review your updated carpool assignment.", url: "/", tag: `carpool-rider-${eventId}` },
       });
     }
   }
@@ -384,10 +383,9 @@ export async function PATCH(
   // Riders who were removed (in old but not in new)
   for (const [riderId, oldDriverId] of oldRiderToDriver) {
     if (!newRiderToDriver.has(riderId)) {
-      const oldDriverName = nameMap.get(oldDriverId) ?? "Your driver";
       notifications.push({
         userId: riderId,
-        payload: { title: eventTitle, body: `${oldDriverName} is no longer your driver. We will notify you when a driver has been assigned for you`, url: "/", tag: `carpool-rider-${eventId}` },
+        payload: { title: "Your driver assignment was removed", body: "We'll notify you when a new driver is assigned.", url: "/", tag: `carpool-rider-${eventId}` },
       });
     }
   }
@@ -401,7 +399,7 @@ export async function PATCH(
     if (addedRiders.length > 0 || removedRiders.length > 0) {
       notifications.push({
         userId: driverId,
-        payload: { title: eventTitle, body: "There was a change to your carpool assignment. Please review the pickup order and send it to your riders.", url: "/", tag: `carpool-driver-${eventId}` },
+        payload: { title: "Your carpool was updated", body: "Review the pickup order and send it to your riders.", url: "/", tag: `carpool-driver-${eventId}` },
       });
     }
   }

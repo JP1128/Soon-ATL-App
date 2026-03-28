@@ -22,6 +22,9 @@ export const metadata: Metadata = {
   description:
     "Soon ATL is work in progress. Ask JP for access or more information.",
   manifest: "/manifest.json",
+  icons: {
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export const viewport: Viewport = {
