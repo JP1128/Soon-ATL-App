@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { TextInputOverlay } from "@/components/ui/text-input-overlay";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Logout01Icon } from "@hugeicons/core-free-icons";
+import { Logout01Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
+import { AnimatePresence, motion } from "motion/react";
 import { createClient } from "@/lib/supabase/client";
 import { formatPhoneNumber } from "@/lib/utils";
 import type { Profile } from "@/types/database";
@@ -37,6 +38,11 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
   const needsPhone = !profile.phone_number;
 
   const phoneValid = isValidPhoneNumber(phoneNumber);
+
+  // Clear saved state when user makes changes
+  useEffect(() => {
+    if (saved) setSaved(false);
+  }, [fullName, phoneNumber]);
 
   // Auto-open phone overlay when it needs attention
   useEffect(() => {
@@ -70,6 +76,7 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
     setSaved(true);
     setIsSaving(false);
     router.refresh();
+    setTimeout(() => setSaved(false), 2000);
   }
 
   const initials = fullName
@@ -152,13 +159,38 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
         </div>
 
         {error && <p className="text-sm text-destructive">{error}</p>}
-        <Button type="submit" disabled={isSaving || !phoneValid} className="w-full rounded-xl">
-          {isSaving ? "Saving…" : "Save Changes"}
+        <Button
+          type="submit"
+          disabled={isSaving || !phoneValid || saved}
+          className="relative w-full rounded-xl overflow-hidden"
+        >
+          <AnimatePresence mode="wait">
+            {saved ? (
+              <motion.span
+                key="saved"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="inline-flex items-center gap-1.5"
+              >
+                <HugeiconsIcon icon={CheckmarkCircle02Icon} className="size-4" />
+                Saved
+              </motion.span>
+            ) : (
+              <motion.span
+                key="save"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+              >
+                {isSaving ? "Saving\u2026" : "Save Changes"}
+              </motion.span>
+            )}
+          </AnimatePresence>
         </Button>
       </form>
-      {saved && (
-        <p className="mt-3 text-center text-sm text-green-600">Profile updated!</p>
-      )}
       <Button
         type="button"
         variant="ghost"

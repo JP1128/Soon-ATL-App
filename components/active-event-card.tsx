@@ -12,6 +12,7 @@ interface ActiveEventCardProps {
   eventDate: string;
   title: string;
   subtitle: string;
+  address: string;
   status: UserEventStatus;
   hasPhoneNumber: boolean;
 }
@@ -38,6 +39,7 @@ export function ActiveEventCard({
   eventDate,
   title,
   subtitle,
+  address,
   status,
   hasPhoneNumber,
 }: ActiveEventCardProps): React.ReactElement {
@@ -126,6 +128,7 @@ export function ActiveEventCard({
         <div className="min-w-0">
           <p className="font-semibold">{title}</p>
           <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">{address}</p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1.5">
           <Badge variant={statusConfig[status].variant}>

@@ -109,7 +109,8 @@ export default async function HomePage(): Promise<React.ReactElement> {
               weekday: "short",
               month: "short",
               day: "numeric",
-            })}${activeEvent.event_time ? ` · ${new Date(`1970-01-01T${activeEvent.event_time}`).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : ""} · ${formatDisplayAddress(activeEvent.location)}`}
+            })}${activeEvent.event_time ? ` · ${new Date(`1970-01-01T${activeEvent.event_time}`).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : ""}`}
+            address={formatDisplayAddress(activeEvent.location)}
             status={userStatus}
             hasPhoneNumber={!!profile?.phone_number}
           />
