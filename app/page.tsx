@@ -38,7 +38,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
 
   // Determine user's status for the active event
   let userStatus: UserEventStatus = "needs-response";
-  let userResponse: Pick<Response, "id" | "role" | "before_role" | "after_role" | "pickup_address" | "pickup_lat" | "pickup_lng" | "return_address" | "return_lat" | "return_lng" | "available_seats" | "departure_time"> | null = null;
+  let userResponse: Pick<Response, "id" | "role" | "before_role" | "after_role" | "pickup_address" | "pickup_lat" | "pickup_lng" | "return_address" | "return_lat" | "return_lng" | "available_seats" | "departure_time" | "note"> | null = null;
   let beforeAssignedRiders: { id: string; full_name: string; avatar_url: string | null; phone_number: string | null; pickup_lat: number | null; pickup_lng: number | null; pickup_address: string | null; return_lat: number | null; return_lng: number | null; return_address: string | null }[] = [];
   let afterAssignedRiders: { id: string; full_name: string; avatar_url: string | null; phone_number: string | null; pickup_lat: number | null; pickup_lng: number | null; pickup_address: string | null; return_lat: number | null; return_lng: number | null; return_address: string | null }[] = [];
   let beforeAssignedDriver: { full_name: string; avatar_url: string | null; pickup_lat: number | null; pickup_lng: number | null } | null = null;
