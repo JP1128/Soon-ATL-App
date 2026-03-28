@@ -200,6 +200,7 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
         variant="ghost"
         className="mt-6 w-full rounded-xl text-destructive hover:text-destructive hover:bg-destructive/10"
         onClick={async () => {
+          triggerFluidWave();
           const supabase = createClient();
           await supabase.auth.signOut();
           router.push("/");

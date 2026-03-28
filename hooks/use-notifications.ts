@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { triggerFluidWave, dismissFluidWave } from "@/components/ui/fluid-wave-loader";
 
 type NotificationPermission = "default" | "granted" | "denied";
 
@@ -66,6 +67,7 @@ export function useNotifications(): UseNotificationsReturn {
     if (!isSupported) return;
 
     setIsLoading(true);
+    triggerFluidWave();
     try {
       const result = await Notification.requestPermission();
       setPermission(result as NotificationPermission);
@@ -124,6 +126,7 @@ export function useNotifications(): UseNotificationsReturn {
       console.error("Failed to subscribe:", error);
     } finally {
       setIsLoading(false);
+      dismissFluidWave();
     }
   }, [isSupported]);
 
@@ -131,6 +134,7 @@ export function useNotifications(): UseNotificationsReturn {
     if (!isSupported) return;
 
     setIsLoading(true);
+    triggerFluidWave();
     try {
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.getSubscription();
@@ -150,6 +154,7 @@ export function useNotifications(): UseNotificationsReturn {
       console.error("Failed to unsubscribe:", error);
     } finally {
       setIsLoading(false);
+      dismissFluidWave();
     }
   }, [isSupported]);
 
