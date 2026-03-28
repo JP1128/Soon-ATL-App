@@ -3,11 +3,13 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
+import { motion, AnimatePresence } from "motion/react";
 
 type UserEventStatus = "needs-response" | "submitted" | "ride-assigned";
 
 interface ActiveEventCardProps {
   eventId: string;
+  eventDate: string;
   title: string;
   subtitle: string;
   status: UserEventStatus;
@@ -24,14 +26,23 @@ const statusConfig: Record<
 };
 
 
+function getDaysLeft(eventDate: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const event = new Date(eventDate + "T00:00:00");
+  return Math.ceil((event.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 export function ActiveEventCard({
   eventId,
+  eventDate,
   title,
   subtitle,
   status,
   hasPhoneNumber,
 }: ActiveEventCardProps): React.ReactElement {
   const router = useRouter();
+  const daysLeft = getDaysLeft(eventDate);
   const [isPressed, setIsPressed] = useState(false);
   const [isRejected, setIsRejected] = useState(false);
   const [rejectedPhase, setRejectedPhase] = useState<"idle" | "rise" | "fall">("idle");
@@ -69,6 +80,7 @@ export function ActiveEventCard({
   }
 
   return (
+    <>
     <button
       type="button"
       onClick={handleClick}
@@ -115,10 +127,41 @@ export function ActiveEventCard({
           <p className="font-semibold">{title}</p>
           <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
         </div>
-        <Badge variant={statusConfig[status].variant} className="shrink-0">
-          {statusConfig[status].label}
-        </Badge>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <Badge variant={statusConfig[status].variant}>
+            {statusConfig[status].label}
+          </Badge>
+          {daysLeft >= 0 && (
+            <Badge variant="outline" className="text-xs">
+              {daysLeft === 0 ? "Today" : daysLeft === 1 ? "Tomorrow" : `${daysLeft} days left`}
+            </Badge>
+          )}
+        </div>
       </div>
     </button>
+
+      {/* Loading indicator */}
+      <AnimatePresence>
+        {isPressed && (
+          <motion.div
+            initial={{ opacity: 0, scaleX: 0.3 }}
+            animate={{ opacity: 1, scaleX: 1 }}
+            transition={{ delay: 0.5, duration: 0.4, ease: "easeOut" }}
+            className="mx-auto mt-5 h-[3px] w-16 origin-center overflow-hidden rounded-full bg-foreground/10"
+          >
+            <motion.div
+              className="h-full w-1/2 rounded-full bg-foreground/40"
+              animate={{ x: ["-100%", "200%"] }}
+              transition={{
+                duration: 1,
+                repeat: Infinity,
+                ease: "easeInOut",
+                delay: 0.5,
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }

@@ -35,7 +35,7 @@ export async function PATCH(request: Request): Promise<NextResponse> {
   }
 
   const body = await request.json();
-  const allowedFields = ["full_name", "default_role", "university", "phone_number"];
+  const allowedFields = ["full_name", "phone_number"];
   const updates: Record<string, unknown> = {};
 
   for (const field of allowedFields) {
@@ -55,29 +55,6 @@ export async function PATCH(request: Request): Promise<NextResponse> {
       return NextResponse.json({ error: "Invalid phone number" }, { status: 400 });
     }
     updates.phone_number = digits;
-  }
-
-  // Validate default_role
-  if (updates.default_role !== undefined && updates.default_role !== null) {
-    const validRoles = ["driver", "rider", "attending"];
-    if (!validRoles.includes(updates.default_role as string)) {
-      return NextResponse.json({ error: "Invalid default role" }, { status: 400 });
-    }
-  }
-
-  // Validate university
-  if (updates.university !== undefined && updates.university !== null) {
-    const validUniversities = [
-      "University of Georgia",
-      "Georgia Institute of Technology",
-      "Georgia State University",
-      "Emory University",
-      "Kennesaw State University",
-      "Other",
-    ];
-    if (!validUniversities.includes(updates.university as string)) {
-      return NextResponse.json({ error: "Invalid university" }, { status: 400 });
-    }
   }
 
   const { data, error } = await supabase

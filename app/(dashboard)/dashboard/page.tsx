@@ -37,26 +37,47 @@ export default async function DashboardPage(): Promise<React.ReactElement> {
     beforeRiders: number;
     afterDrivers: number;
     afterRiders: number;
+    hasUnassignedRiders: boolean;
+    unassignedRiderCount: number;
   } | undefined;
 
   if (activeEvent && activeEvent.status === "open") {
     const { data: responses } = await supabase
       .from("responses")
-      .select("role, before_role, after_role")
+      .select("user_id, role, before_role, after_role")
       .eq("event_id", activeEvent.id) as {
-      data: { role: string; before_role: string | null; after_role: string | null }[] | null;
+      data: { user_id: string; role: string; before_role: string | null; after_role: string | null }[] | null;
+    };
+
+    const { data: carpools } = await supabase
+      .from("carpools")
+      .select("driver_id, carpool_riders(rider_id)")
+      .eq("event_id", activeEvent.id) as {
+      data: { driver_id: string; carpool_riders: { rider_id: string }[] }[] | null;
     };
 
     const rows = responses ?? [];
+    const assignedRiderIds = new Set(
+      (carpools ?? []).flatMap((c) => c.carpool_riders.map((cr) => cr.rider_id))
+    );
+    const beforeRiderIds = rows.filter((r) => r.before_role === "rider").map((r) => r.user_id);
+    const afterRiderIds = rows.filter((r) => r.after_role === "rider").map((r) => r.user_id);
+    const hasUnassignedBefore = beforeRiderIds.some((id) => !assignedRiderIds.has(id));
+    const hasUnassignedAfter = afterRiderIds.some((id) => !assignedRiderIds.has(id));
+    const unassignedBeforeCount = beforeRiderIds.filter((id) => !assignedRiderIds.has(id)).length;
+    const unassignedAfterCount = afterRiderIds.filter((id) => !assignedRiderIds.has(id)).length;
+
     stats = {
       total: rows.length,
       drivers: rows.filter((r) => r.role === "driver").length,
       riders: rows.filter((r) => r.role === "rider").length,
       attending: rows.filter((r) => r.role === "attending").length,
       beforeDrivers: rows.filter((r) => r.before_role === "driver").length,
-      beforeRiders: rows.filter((r) => r.before_role === "rider").length,
+      beforeRiders: beforeRiderIds.length,
       afterDrivers: rows.filter((r) => r.after_role === "driver").length,
-      afterRiders: rows.filter((r) => r.after_role === "rider").length,
+      afterRiders: afterRiderIds.length,
+      hasUnassignedRiders: hasUnassignedBefore || hasUnassignedAfter,
+      unassignedRiderCount: unassignedBeforeCount + unassignedAfterCount,
     };
   }
 

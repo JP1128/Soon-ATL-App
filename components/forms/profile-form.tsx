@@ -4,36 +4,17 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { TextInputOverlay } from "@/components/ui/text-input-overlay";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Logout01Icon } from "@hugeicons/core-free-icons";
+import { createClient } from "@/lib/supabase/client";
 import { formatPhoneNumber } from "@/lib/utils";
-import type { Profile, ResponseRole, University } from "@/types/database";
+import type { Profile } from "@/types/database";
 
 interface ProfileFormProps {
   profile: Profile;
 }
-
-const ROLE_OPTIONS: { value: ResponseRole; label: string }[] = [
-  { value: "driver", label: "Driver" },
-  { value: "rider", label: "Rider" },
-  { value: "attending", label: "Neither (Attending Only)" },
-];
-
-const UNIVERSITY_OPTIONS: University[] = [
-  "University of Georgia",
-  "Georgia Institute of Technology",
-  "Georgia State University",
-  "Emory University",
-  "Kennesaw State University",
-  "Other",
-];
 
 function isValidPhoneNumber(value: string): boolean {
   if (value === "") return true;
@@ -47,12 +28,7 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
   const [phoneNumber, setPhoneNumber] = useState(
     profile.phone_number ? formatPhoneNumber(profile.phone_number) : ""
   );
-  const [defaultRole, setDefaultRole] = useState<ResponseRole | "">(
-    profile.default_role ?? ""
-  );
-  const [university, setUniversity] = useState<University | "">(
-    profile.university ?? ""
-  );
+
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,8 +57,6 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
       body: JSON.stringify({
         full_name: fullName,
         phone_number: phoneNumber ? phoneNumber.replace(/\D/g, "") : null,
-        default_role: defaultRole || null,
-        university: university || null,
       }),
     });
 
@@ -125,7 +99,7 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
             <button
               type="button"
               onClick={() => setNameOpen(true)}
-              className="flex h-9 w-full items-center rounded-4xl border border-input bg-input/30 px-3 text-base text-left transition-colors hover:bg-input/50 md:text-sm"
+              className="flex h-9 w-full items-center rounded-4xl border border-input bg-input/30 px-3 text-sm text-left transition-colors hover:bg-input/50"
             >
               {fullName ? (
                 <span className="truncate">{fullName}</span>
@@ -147,7 +121,7 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
             <button
               type="button"
               onClick={() => setPhoneOpen(true)}
-              className={`flex h-9 w-full items-center rounded-4xl border bg-input/30 px-3 text-base text-left transition-colors hover:bg-input/50 md:text-sm ${
+              className={`flex h-9 w-full items-center rounded-4xl border bg-input/30 px-3 text-sm text-left transition-colors hover:bg-input/50 ${
                 needsPhone && !phoneNumber ? "border-destructive" : "border-input"
               }`}
             >
@@ -177,51 +151,6 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
           </div>
         </div>
 
-        <div className="space-y-4">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Default Form Preferences</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Pre-filled when you open an event form.
-            </p>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="default_role" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Default Role</Label>
-            <Select
-              value={defaultRole}
-              onValueChange={(val) => setDefaultRole(val as ResponseRole)}
-            >
-              <SelectTrigger className="w-full capitalize">
-                <SelectValue placeholder="Select a default role" />
-              </SelectTrigger>
-              <SelectContent>
-                {ROLE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="university" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">University</Label>
-            <Select
-              value={university}
-              onValueChange={(val) => setUniversity(val as University)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select your university" />
-              </SelectTrigger>
-              <SelectContent>
-                {UNIVERSITY_OPTIONS.map((uni) => (
-                  <SelectItem key={uni} value={uni}>
-                    {uni}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
         {error && <p className="text-sm text-destructive">{error}</p>}
         <Button type="submit" disabled={isSaving || !phoneValid} className="w-full rounded-xl">
           {isSaving ? "Saving…" : "Save Changes"}
@@ -230,6 +159,20 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
       {saved && (
         <p className="mt-3 text-center text-sm text-green-600">Profile updated!</p>
       )}
+      <Button
+        type="button"
+        variant="ghost"
+        className="mt-6 w-full rounded-xl text-destructive hover:text-destructive hover:bg-destructive/10"
+        onClick={async () => {
+          const supabase = createClient();
+          await supabase.auth.signOut();
+          router.push("/");
+          router.refresh();
+        }}
+      >
+        <HugeiconsIcon icon={Logout01Icon} className="size-4" />
+        Sign Out
+      </Button>
     </div>
   );
 }

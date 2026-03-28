@@ -27,25 +27,30 @@ export default async function EventPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Get user's existing response and profile defaults
+  // Get user's existing response for this event
   let existingResponse = null;
-  let defaultRole: string | null = null;
   if (user) {
-    const [{ data: response }, { data: profile }] = await Promise.all([
+    const { data: response } = await
       supabase
         .from("responses")
         .select("*")
         .eq("event_id", id)
         .eq("user_id", user.id)
-        .maybeSingle(),
-      supabase
-        .from("profiles")
-        .select("default_role")
-        .eq("id", user.id)
-        .single(),
-    ]);
+        .maybeSingle();
     existingResponse = response;
-    defaultRole = profile?.default_role ?? null;
+
+    // If no response for this event, pre-fill from the user's most recent response
+    if (!existingResponse) {
+      const { data: previousResponse } = await supabase
+        .from("responses")
+        .select("*")
+        .eq("user_id", user.id)
+        .neq("event_id", id)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      existingResponse = previousResponse;
+    }
   }
 
   const isOpen = event.status === "open";
@@ -98,7 +103,6 @@ export default async function EventPage({
             eventId={id}
             eventTitle={event.title}
             existingResponse={existingResponse}
-            defaultRole={defaultRole}
           />
         </div>
       )}

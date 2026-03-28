@@ -24,6 +24,8 @@ interface EventStats {
   beforeRiders: number;
   afterDrivers: number;
   afterRiders: number;
+  hasUnassignedRiders: boolean;
+  unassignedRiderCount: number;
 }
 
 interface DraftEventEditorProps {
@@ -200,6 +202,11 @@ export function DraftEventEditor({ event, stats }: DraftEventEditorProps): React
               >
                 <HugeiconsIcon icon={Car01Icon} className="size-4" />
                 Carpool Assignment
+                {stats && stats.unassignedRiderCount > 0 && (
+                  <span className="rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
+                    {stats.unassignedRiderCount}
+                  </span>
+                )}
               </Button>
               <Button onClick={handleDelete} variant="outline" className="w-full rounded-xl text-destructive hover:text-destructive">
                 <HugeiconsIcon icon={Delete02Icon} className="size-4" />

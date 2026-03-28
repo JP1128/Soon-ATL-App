@@ -4,22 +4,12 @@ export type ResponseRole = "driver" | "rider" | "attending";
 export type PreferenceType = "prefer" | "avoid";
 export type CarpoolStatus = "auto" | "manual";
 
-export type University =
-  | "University of Georgia"
-  | "Georgia Institute of Technology"
-  | "Georgia State University"
-  | "Emory University"
-  | "Kennesaw State University"
-  | "Other";
-
 export interface Profile {
   id: string;
   email: string;
   full_name: string;
   avatar_url: string | null;
   role: UserRole;
-  default_role: ResponseRole | null;
-  university: University | null;
   phone_number: string | null;
   created_at: string;
 }

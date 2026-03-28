@@ -9,18 +9,8 @@ import {
   Search01Icon,
   Location01Icon,
 } from "@hugeicons/core-free-icons"
-import { createClient } from "@/lib/supabase/client"
-import type { University } from "@/types/database"
 import { GOOGLE_MAPS_LIBRARIES } from "@/lib/google-maps/constants"
 const DEFAULT_CENTER = { lat: 33.749, lng: -84.388 } // Atlanta
-
-const UNIVERSITY_COORDINATES: Record<Exclude<University, "Other">, { lat: number; lng: number }> = {
-  "University of Georgia": { lat: 33.9480, lng: -83.3773 },
-  "Georgia Institute of Technology": { lat: 33.7756, lng: -84.3963 },
-  "Georgia State University": { lat: 33.7530, lng: -84.3865 },
-  "Emory University": { lat: 33.7925, lng: -84.3234 },
-  "Kennesaw State University": { lat: 34.0382, lng: -84.5819 },
-}
 
 interface AddressResult {
   address: string
@@ -66,33 +56,11 @@ function AddressPickerOverlay({
   const mapRef = React.useRef<google.maps.Map | null>(null)
   const isDraggingRef = React.useRef(false)
 
-  const [universityCenter, setUniversityCenter] = React.useState<{ lat: number; lng: number } | null>(null)
-
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
     libraries: GOOGLE_MAPS_LIBRARIES,
     version: "weekly",
   })
-
-  // Fetch user's university for location bias
-  React.useEffect(() => {
-    let cancelled = false
-    const fetchUniversity = async (): Promise<void> => {
-      const supabase = createClient()
-      const { data: authData } = await supabase.auth.getUser()
-      if (cancelled || !authData.user) return
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("university")
-        .eq("id", authData.user.id)
-        .single()
-      if (cancelled || !profile?.university) return
-      const coords = UNIVERSITY_COORDINATES[profile.university as Exclude<University, "Other">]
-      if (coords) setUniversityCenter(coords)
-    }
-    void fetchUniversity()
-    return () => { cancelled = true }
-  }, [])
 
   // Mount/unmount animation
   React.useEffect(() => {
@@ -154,7 +122,7 @@ function AddressPickerOverlay({
           input: query,
           includedRegionCodes: ["us"],
           locationBias: new google.maps.Circle({
-            center: universityCenter ?? DEFAULT_CENTER,
+            center: DEFAULT_CENTER,
             radius: 50000, // 50 km
           }),
           language: "en-US",
@@ -180,7 +148,7 @@ function AddressPickerOverlay({
       cancelled = true
       clearTimeout(timer)
     }
-  }, [query, isLoaded, universityCenter])
+  }, [query, isLoaded])
 
   async function handleSelectSuggestion(suggestion: google.maps.places.AutocompleteSuggestion): Promise<void> {
     const placePrediction = suggestion.placePrediction

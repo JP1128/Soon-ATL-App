@@ -9,6 +9,7 @@ import type { AddressResult } from "@/components/ui/address-picker-overlay";
 import { ManualAddressOverlay } from "@/components/ui/manual-address-overlay";
 import { TextInputOverlay } from "@/components/ui/text-input-overlay";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { AnimatePresence, motion } from "motion/react";
 import {
   Car01Icon,
   LocationUser01Icon,
@@ -36,7 +37,6 @@ interface EventFormProps {
   eventId: string;
   eventTitle: string;
   existingResponse: ExistingResponse | null;
-  defaultRole: string | null;
 }
 
 function parseTime(time: string): { hour: string; minute: string; period: string } {
@@ -60,28 +60,19 @@ export function EventForm({
   eventId,
   eventTitle,
   existingResponse,
-  defaultRole,
 }: EventFormProps): React.ReactElement {
   const initialBeforeRole: LegRole | null =
     existingResponse?.before_role ??
     (existingResponse?.role === "driver" || existingResponse?.role === "rider"
       ? (existingResponse.role as LegRole)
-      : existingResponse
-        ? null
-        : defaultRole === "driver" || defaultRole === "rider"
-          ? (defaultRole as LegRole)
-          : null);
+      : null);
   const initialAfterRole: LegRole | null =
     existingResponse?.after_role ??
     (existingResponse?.needs_return_ride && existingResponse?.role === "driver"
       ? "driver"
       : existingResponse?.needs_return_ride && existingResponse?.role === "rider"
         ? "rider"
-        : existingResponse
-          ? null
-          : defaultRole === "driver" || defaultRole === "rider"
-            ? (defaultRole as LegRole)
-            : null);
+        : null);
 
   const initialTime = parseTime(existingResponse?.departure_time ?? "");
 
@@ -120,6 +111,12 @@ export function EventForm({
   const [error, setError] = useState<string | null>(null);
   const [timeOpen, setTimeOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
+
+  // Increment keys to re-trigger mount animations on icon swap
+  const [iconKeys, setIconKeys] = useState<Record<string, number>>({});
+  function triggerAnim(key: string): void {
+    setIconKeys((prev) => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }));
+  }
 
   const isAttendingOnly = !beforeRole && !afterRole;
 
@@ -337,30 +334,54 @@ export function EventForm({
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() =>
-                  setBeforeRole((prev) => (prev === "rider" ? null : "rider"))
-                }
+                onClick={() => {
+                  const next = beforeRole === "rider" ? null : "rider";
+                  setBeforeRole(next);
+                  if (next) triggerAnim("before-rider");
+                }}
                 className={`flex flex-col items-center gap-1.5 xtall:gap-2 rounded-2xl border px-4 py-3 tall:py-3.5 xtall:py-5 text-center transition-all ${
                   beforeRole === "rider"
                     ? "border-foreground bg-foreground text-background"
                     : "border-border hover:border-foreground/20 hover:bg-muted/50"
                 }`}
               >
-                <HugeiconsIcon icon={LocationUser01Icon} className="size-5 xtall:size-6" strokeWidth={1.5} />
+                <AnimatePresence mode="wait">
+                  <motion.span
+                    key={iconKeys["before-rider"] ?? 0}
+                    initial={{ y: -20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 15 }}
+                    className="inline-flex"
+                  >
+                    <HugeiconsIcon icon={LocationUser01Icon} className="size-5 xtall:size-6" strokeWidth={1.5} />
+                  </motion.span>
+                </AnimatePresence>
                 <span className="text-sm font-medium">Need a ride</span>
               </button>
               <button
                 type="button"
-                onClick={() =>
-                  setBeforeRole((prev) => (prev === "driver" ? null : "driver"))
-                }
-                className={`flex flex-col items-center gap-1.5 xtall:gap-2 rounded-2xl border px-4 py-3 tall:py-3.5 xtall:py-5 text-center transition-all ${
+                onClick={() => {
+                  const next = beforeRole === "driver" ? null : "driver";
+                  setBeforeRole(next);
+                  if (next) triggerAnim("before-driver");
+                }}
+                className={`flex flex-col items-center gap-1.5 xtall:gap-2 rounded-2xl border px-4 py-3 tall:py-3.5 xtall:py-5 text-center transition-all overflow-hidden ${
                   beforeRole === "driver"
                     ? "border-foreground bg-foreground text-background"
                     : "border-border hover:border-foreground/20 hover:bg-muted/50"
                 }`}
               >
-                <HugeiconsIcon icon={Car01Icon} className="size-5 xtall:size-6" strokeWidth={1.5} />
+                <AnimatePresence mode="wait">
+                  <motion.span
+                    key={iconKeys["before-driver"] ?? 0}
+                    initial={{ x: -50, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    transition={{ type: "spring", stiffness: 200, damping: 20 }}
+                    className="inline-flex"
+                  >
+                    <HugeiconsIcon icon={Car01Icon} className="size-5 xtall:size-6" strokeWidth={1.5} />
+                  </motion.span>
+                </AnimatePresence>
                 <span className="text-sm font-medium">Can drive</span>
               </button>
             </div>
@@ -374,30 +395,54 @@ export function EventForm({
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() =>
-                  setAfterRole((prev) => (prev === "rider" ? null : "rider"))
-                }
+                onClick={() => {
+                  const next = afterRole === "rider" ? null : "rider";
+                  setAfterRole(next);
+                  if (next) triggerAnim("after-rider");
+                }}
                 className={`flex flex-col items-center gap-1.5 xtall:gap-2 rounded-2xl border px-4 py-3 tall:py-3.5 xtall:py-5 text-center transition-all ${
                   afterRole === "rider"
                     ? "border-foreground bg-foreground text-background"
                     : "border-border hover:border-foreground/20 hover:bg-muted/50"
                 }`}
               >
-                <HugeiconsIcon icon={LocationUser01Icon} className="size-5 xtall:size-6" strokeWidth={1.5} />
+                <AnimatePresence mode="wait">
+                  <motion.span
+                    key={iconKeys["after-rider"] ?? 0}
+                    initial={{ y: -20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 15 }}
+                    className="inline-flex"
+                  >
+                    <HugeiconsIcon icon={LocationUser01Icon} className="size-5 xtall:size-6" strokeWidth={1.5} />
+                  </motion.span>
+                </AnimatePresence>
                 <span className="text-sm font-medium">Need a ride</span>
               </button>
               <button
                 type="button"
-                onClick={() =>
-                  setAfterRole((prev) => (prev === "driver" ? null : "driver"))
-                }
-                className={`flex flex-col items-center gap-1.5 xtall:gap-2 rounded-2xl border px-4 py-3 tall:py-3.5 xtall:py-5 text-center transition-all ${
+                onClick={() => {
+                  const next = afterRole === "driver" ? null : "driver";
+                  setAfterRole(next);
+                  if (next) triggerAnim("after-driver");
+                }}
+                className={`flex flex-col items-center gap-1.5 xtall:gap-2 rounded-2xl border px-4 py-3 tall:py-3.5 xtall:py-5 text-center transition-all overflow-hidden ${
                   afterRole === "driver"
                     ? "border-foreground bg-foreground text-background"
                     : "border-border hover:border-foreground/20 hover:bg-muted/50"
                 }`}
               >
-                <HugeiconsIcon icon={Car01Icon} className="size-5 xtall:size-6" strokeWidth={1.5} />
+                <AnimatePresence mode="wait">
+                  <motion.span
+                    key={iconKeys["after-driver"] ?? 0}
+                    initial={{ x: -50, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    transition={{ type: "spring", stiffness: 200, damping: 20 }}
+                    className="inline-flex"
+                  >
+                    <HugeiconsIcon icon={Car01Icon} className="size-5 xtall:size-6" strokeWidth={1.5} />
+                  </motion.span>
+                </AnimatePresence>
                 <span className="text-sm font-medium">Can drive</span>
               </button>
             </div>
@@ -409,6 +454,7 @@ export function EventForm({
             onClick={() => {
               setBeforeRole(null);
               setAfterRole(null);
+              triggerAnim("neither");
             }}
             className={`flex w-full items-center justify-center gap-2 rounded-2xl border px-4 py-2.5 tall:py-3 xtall:py-4 text-center transition-all ${
               isAttendingOnly
@@ -416,7 +462,17 @@ export function EventForm({
                 : "border-border hover:border-foreground/20 hover:bg-muted/50"
             }`}
           >
-            <HugeiconsIcon icon={Coffee01Icon} className="size-5" strokeWidth={1.5} />
+            <AnimatePresence mode="wait">
+              <motion.span
+                key={iconKeys["neither"] ?? 0}
+                initial={{ rotate: -15, scale: 0.8 }}
+                animate={{ rotate: 0, scale: 1 }}
+                transition={{ type: "spring", stiffness: 300, damping: 12 }}
+                className="inline-flex"
+              >
+                <HugeiconsIcon icon={Coffee01Icon} className="size-5" strokeWidth={1.5} />
+              </motion.span>
+            </AnimatePresence>
             <span className="text-sm font-medium">
               Neither — just attending
             </span>

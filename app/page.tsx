@@ -103,6 +103,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
         {user && activeEvent && (
           <ActiveEventCard
             eventId={activeEvent.id}
+            eventDate={activeEvent.event_date}
             title={activeEvent.title}
             subtitle={`${new Date(activeEvent.event_date + "T00:00:00").toLocaleDateString("en-US", {
               weekday: "short",
