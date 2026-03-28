@@ -1,0 +1,49 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+
+export async function PATCH(request: Request): Promise<NextResponse> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await request.json() as { carpoolId: string; riderOrder: string[] };
+  const { carpoolId, riderOrder } = body;
+
+  if (!carpoolId || !Array.isArray(riderOrder)) {
+    return NextResponse.json({ error: "Missing carpoolId or riderOrder" }, { status: 400 });
+  }
+
+  // Verify the user is the driver of this carpool
+  const { data: carpool } = await supabase
+    .from("carpools")
+    .select("id, driver_id")
+    .eq("id", carpoolId)
+    .single() as { data: { id: string; driver_id: string } | null };
+
+  if (!carpool || carpool.driver_id !== user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Update pickup_order for each rider
+  const updates = riderOrder.map((riderId, index) =>
+    supabase
+      .from("carpool_riders")
+      .update({ pickup_order: index + 1 })
+      .eq("carpool_id", carpoolId)
+      .eq("rider_id", riderId)
+  );
+
+  const results = await Promise.all(updates);
+  const failed = results.find((r) => r.error);
+
+  if (failed?.error) {
+    return NextResponse.json({ error: "Failed to update order" }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true });
+}

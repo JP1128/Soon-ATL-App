@@ -38,16 +38,17 @@ export default async function HomePage(): Promise<React.ReactElement> {
 
   // Determine user's status for the active event
   let userStatus: UserEventStatus = "needs-response";
-  let userResponse: Pick<Response, "id" | "role" | "before_role" | "after_role" | "pickup_address" | "return_address" | "available_seats" | "departure_time"> | null = null;
-  let assignedRiders: { full_name: string; avatar_url: string | null }[] = [];
-  let assignedDriver: { full_name: string; avatar_url: string | null } | null = null;
+  let userResponse: Pick<Response, "id" | "role" | "before_role" | "after_role" | "pickup_address" | "pickup_lat" | "pickup_lng" | "return_address" | "return_lat" | "return_lng" | "available_seats" | "departure_time"> | null = null;
+  let assignedRiders: { id: string; full_name: string; avatar_url: string | null; phone_number: string | null; pickup_lat: number | null; pickup_lng: number | null; pickup_address: string | null; return_lat: number | null; return_lng: number | null; return_address: string | null }[] = [];
+  let assignedDriver: { full_name: string; avatar_url: string | null; pickup_lat: number | null; pickup_lng: number | null } | null = null;
+  let carpoolId: string | null = null;
   if (user && activeEvent) {
     const { data: response } = await supabase
       .from("responses")
-      .select("id, role, before_role, after_role, pickup_address, return_address, available_seats, departure_time")
+      .select("id, role, before_role, after_role, pickup_address, pickup_lat, pickup_lng, return_address, return_lat, return_lng, available_seats, departure_time")
       .eq("event_id", activeEvent.id)
       .eq("user_id", user.id)
-      .maybeSingle() as { data: Pick<Response, "id" | "role" | "before_role" | "after_role" | "pickup_address" | "return_address" | "available_seats" | "departure_time"> | null };
+      .maybeSingle() as { data: Pick<Response, "id" | "role" | "before_role" | "after_role" | "pickup_address" | "pickup_lat" | "pickup_lng" | "return_address" | "return_lat" | "return_lng" | "available_seats" | "departure_time"> | null };
     userResponse = response;
 
     if (response) {
@@ -63,6 +64,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
 
       if (driverCarpool) {
         userStatus = "ride-assigned";
+        carpoolId = driverCarpool.id;
 
         // Fetch assigned riders with profiles
         const { data: riders } = await supabase
@@ -75,15 +77,37 @@ export default async function HomePage(): Promise<React.ReactElement> {
           const riderIds = riders.map((r: { rider_id: string }) => r.rider_id);
           const { data: profiles } = await supabase
             .from("profiles")
-            .select("id, full_name, avatar_url")
-            .in("id", riderIds) as { data: { id: string; full_name: string; avatar_url: string | null }[] | null };
+            .select("id, full_name, avatar_url, phone_number")
+            .in("id", riderIds) as { data: { id: string; full_name: string; avatar_url: string | null; phone_number: string | null }[] | null };
+
+          // Fetch rider responses for pickup/return coordinates
+          const { data: riderResponses } = await supabase
+            .from("responses")
+            .select("user_id, pickup_lat, pickup_lng, pickup_address, return_lat, return_lng, return_address")
+            .eq("event_id", activeEvent.id)
+            .in("user_id", riderIds) as { data: { user_id: string; pickup_lat: number | null; pickup_lng: number | null; pickup_address: string | null; return_lat: number | null; return_lng: number | null; return_address: string | null }[] | null };
 
           if (profiles) {
             // Maintain pickup order
             assignedRiders = riderIds
-              .map((id: string) => profiles.find((p) => p.id === id))
-              .filter((p): p is { id: string; full_name: string; avatar_url: string | null } => !!p)
-              .map((p) => ({ full_name: p.full_name, avatar_url: p.avatar_url }));
+              .map((id: string) => {
+                const profile = profiles.find((p) => p.id === id);
+                const resp = riderResponses?.find((r: { user_id: string }) => r.user_id === id);
+                if (!profile) return null;
+                return {
+                  id: profile.id,
+                  full_name: profile.full_name,
+                  avatar_url: profile.avatar_url,
+                  phone_number: profile.phone_number,
+                  pickup_lat: resp?.pickup_lat ?? null,
+                  pickup_lng: resp?.pickup_lng ?? null,
+                  pickup_address: resp?.pickup_address ?? null,
+                  return_lat: resp?.return_lat ?? null,
+                  return_lng: resp?.return_lng ?? null,
+                  return_address: resp?.return_address ?? null,
+                };
+              })
+              .filter((p): p is NonNullable<typeof p> => !!p);
           }
         }
       } else {
@@ -105,16 +129,29 @@ export default async function HomePage(): Promise<React.ReactElement> {
 
           if (carpool) {
             userStatus = "ride-assigned";
+            carpoolId = carpool.id;
 
             // Fetch the driver's profile
             const { data: driverProfile } = await supabase
               .from("profiles")
               .select("full_name, avatar_url")
               .eq("id", carpool.driver_id)
-              .single();
+              .single() as { data: { full_name: string; avatar_url: string | null } | null };
+
+            // Fetch the driver's response for pickup coordinates
+            const { data: driverResponse } = await supabase
+              .from("responses")
+              .select("pickup_lat, pickup_lng")
+              .eq("event_id", activeEvent.id)
+              .eq("user_id", carpool.driver_id)
+              .maybeSingle() as { data: { pickup_lat: number | null; pickup_lng: number | null } | null };
 
             if (driverProfile) {
-              assignedDriver = driverProfile;
+              assignedDriver = {
+                ...driverProfile,
+                pickup_lat: driverResponse?.pickup_lat ?? null,
+                pickup_lng: driverResponse?.pickup_lng ?? null,
+              };
             }
           }
         }
@@ -125,7 +162,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
   const hasSubmitted = userStatus === "submitted" || userStatus === "ride-assigned";
 
   return (
-    <div className="flex flex-1 w-full max-w-lg flex-col items-center justify-center px-6">
+    <div className={`flex w-full max-w-lg flex-col items-center px-6 ${hasSubmitted ? "flex-1 pt-6 pb-4" : "flex-1 justify-center"}`}>
       {/* Brand — hidden after submission */}
       {!hasSubmitted && (
         <>
@@ -139,7 +176,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
       )}
 
       {/* Main content area */}
-      <div className={`${hasSubmitted ? "" : "mt-6 tall:mt-8 xtall:mt-10"} flex w-full flex-col items-center gap-4`}>
+      <div className={`${hasSubmitted ? "flex-1" : "mt-6 tall:mt-8 xtall:mt-10"} flex w-full flex-col items-center gap-4`}>
         {!user && <LoginButton />}
         {user && activeEvent && hasSubmitted && userResponse && (
           <SubmittedEventCard
@@ -158,6 +195,12 @@ export default async function HomePage(): Promise<React.ReactElement> {
             departureTime={userResponse.departure_time}
             assignedRiders={assignedRiders}
             assignedDriver={assignedDriver}
+            carpoolId={carpoolId}
+            carpoolsSentAt={activeEvent.carpools_sent_at}
+            pickupLat={userResponse.pickup_lat}
+            pickupLng={userResponse.pickup_lng}
+            returnLat={userResponse.return_lat}
+            returnLng={userResponse.return_lng}
           />
         )}
         {user && activeEvent && !hasSubmitted && (

@@ -1,11 +1,36 @@
+"use client";
+
+import { useState, useRef } from "react";
+import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarImage, AvatarFallback, AvatarGroup } from "@/components/ui/avatar";
 import { AnimatedIconBlock } from "@/components/ui/animated-icon-block";
 import { ResponseOptionsMenu } from "@/components/response-options-menu";
+import { CarpoolDetailView } from "@/components/carpool-detail-view";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Car01Icon, LocationUser01Icon, Coffee01Icon, Edit02Icon, MapsSearchIcon, Clock01Icon, SeatSelectorIcon } from "@hugeicons/core-free-icons";
+import { Car01Icon, LocationUser01Icon, Coffee01Icon, Edit02Icon, MapsSearchIcon, Clock01Icon, SeatSelectorIcon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { formatDisplayAddress } from "@/lib/utils";
 import type { LegRole } from "@/types/database";
+
+interface AssignedRider {
+  id: string;
+  full_name: string;
+  avatar_url: string | null;
+  phone_number: string | null;
+  pickup_lat: number | null;
+  pickup_lng: number | null;
+  pickup_address: string | null;
+  return_lat: number | null;
+  return_lng: number | null;
+  return_address: string | null;
+}
+
+interface AssignedDriver {
+  full_name: string;
+  avatar_url: string | null;
+  pickup_lat: number | null;
+  pickup_lng: number | null;
+}
 
 interface SubmittedEventCardProps {
   responseId: string;
@@ -21,8 +46,14 @@ interface SubmittedEventCardProps {
   returnAddress: string | null;
   availableSeats: number | null;
   departureTime: string | null;
-  assignedRiders: { full_name: string; avatar_url: string | null }[];
-  assignedDriver: { full_name: string; avatar_url: string | null } | null;
+  assignedRiders: AssignedRider[];
+  assignedDriver: AssignedDriver | null;
+  carpoolId: string | null;
+  carpoolsSentAt: string | null;
+  pickupLat: number | null;
+  pickupLng: number | null;
+  returnLat: number | null;
+  returnLng: number | null;
 }
 
 function getDaysLeft(eventDate: string): number {
@@ -65,7 +96,31 @@ export function SubmittedEventCard({
   departureTime,
   assignedRiders,
   assignedDriver,
+  carpoolId,
+  carpoolsSentAt,
+  pickupLat,
+  pickupLng,
+  returnLat,
+  returnLng,
 }: SubmittedEventCardProps): React.ReactElement {
+  const [view, setView] = useState<"main" | "detail">("main");
+  const [activeLeg, setActiveLeg] = useState<"before" | "after">("before");
+  const [lockedHeight, setLockedHeight] = useState<number | undefined>(undefined);
+  const mainRef = useRef<HTMLDivElement>(null);
+
+  const showDetail = (leg: "before" | "after"): void => {
+    if (mainRef.current) {
+      setLockedHeight(mainRef.current.offsetHeight);
+    }
+    setActiveLeg(leg);
+    setView("detail");
+  };
+
+  const showMain = (): void => {
+    setLockedHeight(undefined);
+    setView("main");
+  };
+
   const daysLeft = getDaysLeft(eventDate);
 
   const formattedDate = new Date(eventDate + "T00:00:00").toLocaleDateString(
@@ -79,26 +134,25 @@ export function SubmittedEventCard({
       })
     : null;
 
-  return (
-    <div className="relative w-full overflow-hidden rounded-2xl border text-left">
-      {/* Fluid wave at rest */}
-      <div className="absolute inset-x-0 bottom-0 h-[2%]">
-        <svg
-          className="animate-fluid-wave absolute -top-4 left-0 w-[200%]"
-          viewBox="0 0 800 40"
-          preserveAspectRatio="none"
-          style={{ height: 20 }}
-        >
-          <path
-            d="M0,20 Q50,10 100,20 Q150,30 200,20 Q250,10 300,20 Q350,30 400,20 Q450,10 500,20 Q550,30 600,20 Q650,10 700,20 Q750,30 800,20 L800,40 L0,40 Z"
-            className="fill-foreground"
-          />
-        </svg>
-        <div className="absolute inset-x-0 top-0 bottom-0 bg-foreground" />
-      </div>
+  const hasAssignment = 
+    (beforeRole === "driver" && assignedRiders.length > 0) ||
+    (beforeRole === "rider" && !!assignedDriver) ||
+    (afterRole === "driver" && assignedRiders.length > 0) ||
+    (afterRole === "rider" && !!assignedDriver);
 
-      {/* Content */}
-      <div className="relative">
+  return (
+    <div
+      className="relative flex w-full flex-1 flex-col overflow-hidden rounded-2xl border text-left"
+      style={{ minHeight: lockedHeight }}
+    >
+      <motion.div
+        className="relative flex min-h-full flex-1"
+        style={{ width: "200%" }}
+        animate={{ x: view === "main" ? "0%" : "-50%" }}
+        transition={{ type: "tween", duration: 0.3, ease: "easeOut" }}
+      >
+        {/* Main view */}
+        <div ref={mainRef} className="flex w-1/2 flex-col overflow-hidden">
         {/* Section 1: Event info */}
         <div className="px-5 pt-5 pb-4">
           <div className="flex items-start justify-between gap-3">
@@ -193,7 +247,16 @@ export function SubmittedEventCard({
             </div>
           </div>
           {(beforeRole === "driver" || beforeRole === "rider") && (
-            <div className="mt-3 rounded-lg border border-dashed border-border/60 px-3 py-2.5">
+            <div
+              className={`mt-3 rounded-lg px-3 py-2.5 ${
+                (beforeRole === "driver" && assignedRiders.length > 0) || (beforeRole === "rider" && assignedDriver)
+                  ? "border border-border/60 active:bg-secondary/80 transition-colors cursor-pointer"
+                  : ""
+              }`}
+              onClick={hasAssignment ? () => showDetail("before") : undefined}
+              role={hasAssignment ? "button" : undefined}
+              tabIndex={hasAssignment ? 0 : undefined}
+            >
               {beforeRole === "driver" && assignedRiders.length > 0 ? (
                 <div className="flex items-center gap-2.5">
                   <AvatarGroup>
@@ -204,9 +267,10 @@ export function SubmittedEventCard({
                       </Avatar>
                     ))}
                   </AvatarGroup>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="min-w-0 flex-1 text-[11px] text-muted-foreground">
                     {assignedRiders.length} {assignedRiders.length === 1 ? "rider" : "riders"} assigned
                   </p>
+                  <HugeiconsIcon icon={ArrowRight01Icon} className="size-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
                 </div>
               ) : beforeRole === "rider" && assignedDriver ? (
                 <div className="flex items-center gap-2.5">
@@ -214,9 +278,10 @@ export function SubmittedEventCard({
                     {assignedDriver.avatar_url && <AvatarImage src={assignedDriver.avatar_url} />}
                     <AvatarFallback>{getInitials(assignedDriver.full_name)}</AvatarFallback>
                   </Avatar>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="min-w-0 flex-1 text-[11px] text-muted-foreground">
                     {assignedDriver.full_name} is your driver
                   </p>
+                  <HugeiconsIcon icon={ArrowRight01Icon} className="size-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
                 </div>
               ) : (
                 <p className="text-[11px] text-muted-foreground">
@@ -282,7 +347,16 @@ export function SubmittedEventCard({
             </div>
           </div>
           {(afterRole === "driver" || afterRole === "rider") && (
-            <div className="mt-3 rounded-lg border border-dashed border-border/60 px-3 py-2.5">
+            <div
+              className={`mt-3 rounded-lg px-3 py-2.5 ${
+                (afterRole === "driver" && assignedRiders.length > 0) || (afterRole === "rider" && assignedDriver)
+                  ? "border border-border/60 active:bg-secondary/80 transition-colors cursor-pointer"
+                  : ""
+              }`}
+              onClick={hasAssignment ? () => showDetail("after") : undefined}
+              role={hasAssignment ? "button" : undefined}
+              tabIndex={hasAssignment ? 0 : undefined}
+            >
               {afterRole === "driver" && assignedRiders.length > 0 ? (
                 <div className="flex items-center gap-2.5">
                   <AvatarGroup>
@@ -293,9 +367,10 @@ export function SubmittedEventCard({
                       </Avatar>
                     ))}
                   </AvatarGroup>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="min-w-0 flex-1 text-[11px] text-muted-foreground">
                     {assignedRiders.length} {assignedRiders.length === 1 ? "rider" : "riders"} assigned
                   </p>
+                  <HugeiconsIcon icon={ArrowRight01Icon} className="size-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
                 </div>
               ) : afterRole === "rider" && assignedDriver ? (
                 <div className="flex items-center gap-2.5">
@@ -303,9 +378,10 @@ export function SubmittedEventCard({
                     {assignedDriver.avatar_url && <AvatarImage src={assignedDriver.avatar_url} />}
                     <AvatarFallback>{getInitials(assignedDriver.full_name)}</AvatarFallback>
                   </Avatar>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="min-w-0 flex-1 text-[11px] text-muted-foreground">
                     {assignedDriver.full_name} is your driver
                   </p>
+                  <HugeiconsIcon icon={ArrowRight01Icon} className="size-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
                 </div>
               ) : (
                 <p className="text-[11px] text-muted-foreground">
@@ -317,7 +393,54 @@ export function SubmittedEventCard({
             </div>
           )}
         </div>
-      </div>
+
+        {/* Fluid fill — fills remaining space in main view */}
+        <div className="relative flex-1">
+          <svg
+            className="animate-fluid-wave absolute -top-4 left-0 w-[200%]"
+            viewBox="0 0 800 40"
+            preserveAspectRatio="none"
+            style={{ height: 20 }}
+          >
+            <path
+              d="M0,20 Q50,10 100,20 Q150,30 200,20 Q250,10 300,20 Q350,30 400,20 Q450,10 500,20 Q550,30 600,20 Q650,10 700,20 Q750,30 800,20 L800,40 L0,40 Z"
+              className="fill-foreground"
+            />
+          </svg>
+          <div className="absolute inset-0 bg-foreground" />
+        </div>
+        </div>
+
+        {/* Detail view */}
+        <div className="flex w-1/2 flex-col">
+            <CarpoolDetailView
+              title={title}
+              location={location}
+              leg={activeLeg}
+              riders={assignedRiders}
+              driver={assignedDriver}
+              isDriver={
+                (activeLeg === "before" && beforeRole === "driver") ||
+                (activeLeg === "after" && afterRole === "driver")
+              }
+              driverPickupLat={
+                (activeLeg === "before" && beforeRole === "driver") || (activeLeg === "after" && afterRole === "driver")
+                  ? pickupLat
+                  : assignedDriver?.pickup_lat ?? null
+              }
+              driverPickupLng={
+                (activeLeg === "before" && beforeRole === "driver") || (activeLeg === "after" && afterRole === "driver")
+                  ? pickupLng
+                  : assignedDriver?.pickup_lng ?? null
+              }
+              returnLat={returnLat}
+              returnLng={returnLng}
+              carpoolId={carpoolId}
+              carpoolsSentAt={carpoolsSentAt}
+              onBack={showMain}
+            />
+        </div>
+      </motion.div>
     </div>
   );
 }
