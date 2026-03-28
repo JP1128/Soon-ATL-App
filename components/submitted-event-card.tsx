@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarImage, AvatarFallback, AvatarGroup } from "@/components/ui/avatar";
@@ -46,9 +46,12 @@ interface SubmittedEventCardProps {
   returnAddress: string | null;
   availableSeats: number | null;
   departureTime: string | null;
-  assignedRiders: AssignedRider[];
-  assignedDriver: AssignedDriver | null;
-  carpoolId: string | null;
+  beforeAssignedRiders: AssignedRider[];
+  afterAssignedRiders: AssignedRider[];
+  beforeAssignedDriver: AssignedDriver | null;
+  afterAssignedDriver: AssignedDriver | null;
+  beforeCarpoolId: string | null;
+  afterCarpoolId: string | null;
   carpoolsSentAt: string | null;
   pickupLat: number | null;
   pickupLng: number | null;
@@ -94,9 +97,12 @@ export function SubmittedEventCard({
   returnAddress,
   availableSeats,
   departureTime,
-  assignedRiders,
-  assignedDriver,
-  carpoolId,
+  beforeAssignedRiders,
+  afterAssignedRiders,
+  beforeAssignedDriver,
+  afterAssignedDriver,
+  beforeCarpoolId,
+  afterCarpoolId,
   carpoolsSentAt,
   pickupLat,
   pickupLng,
@@ -108,12 +114,88 @@ export function SubmittedEventCard({
   const [lockedHeight, setLockedHeight] = useState<number | undefined>(undefined);
   const mainRef = useRef<HTMLDivElement>(null);
 
+  // Driver indicator: show dot when assigned riders haven't been sent pickup order (per-leg)
+  const beforeSentKey = beforeCarpoolId ? `carpool-order-sent-${beforeCarpoolId}` : null;
+  const afterSentKey = afterCarpoolId ? `carpool-order-sent-${afterCarpoolId}` : null;
+  const hasUnsentBeforeRiders = (() => {
+    if (!beforeSentKey || beforeAssignedRiders.length === 0) return false;
+    const raw = localStorage.getItem(beforeSentKey);
+    if (!raw) return true;
+    try {
+      const sentIds = JSON.parse(raw) as string[];
+      const sentSet = new Set(sentIds);
+      return beforeAssignedRiders.some((r) => !sentSet.has(r.id));
+    } catch {
+      return true;
+    }
+  })();
+  const hasUnsentAfterRiders = (() => {
+    if (!afterSentKey || afterAssignedRiders.length === 0) return false;
+    const raw = localStorage.getItem(afterSentKey);
+    if (!raw) return true;
+    try {
+      const sentIds = JSON.parse(raw) as string[];
+      const sentSet = new Set(sentIds);
+      return afterAssignedRiders.some((r) => !sentSet.has(r.id));
+    } catch {
+      return true;
+    }
+  })();
+
+  // Rider indicator: show dot when assigned a driver the rider hasn't seen yet (per-leg)
+  const beforeRiderSeenKey = `rider-driver-seen-before-${responseId}`;
+  const afterRiderSeenKey = `rider-driver-seen-after-${responseId}`;
+  const [hasUnseenBeforeDriver, setHasUnseenBeforeDriver] = useState(() => {
+    if (!beforeAssignedDriver) return false;
+    const seen = localStorage.getItem(beforeRiderSeenKey);
+    return seen !== beforeAssignedDriver.full_name;
+  });
+  const [hasUnseenAfterDriver, setHasUnseenAfterDriver] = useState(() => {
+    if (!afterAssignedDriver) return false;
+    const seen = localStorage.getItem(afterRiderSeenKey);
+    return seen !== afterAssignedDriver.full_name;
+  });
+
+  const markDriverSeen = useCallback((leg: "before" | "after"): void => {
+    if (leg === "before" && beforeAssignedDriver) {
+      localStorage.setItem(beforeRiderSeenKey, beforeAssignedDriver.full_name);
+      setHasUnseenBeforeDriver(false);
+    } else if (leg === "after" && afterAssignedDriver) {
+      localStorage.setItem(afterRiderSeenKey, afterAssignedDriver.full_name);
+      setHasUnseenAfterDriver(false);
+    }
+  }, [beforeRiderSeenKey, afterRiderSeenKey, beforeAssignedDriver, afterAssignedDriver]);
+
+  useEffect(() => {
+    if (!beforeAssignedDriver) {
+      setHasUnseenBeforeDriver(false);
+    } else {
+      const seen = localStorage.getItem(beforeRiderSeenKey);
+      if (seen !== beforeAssignedDriver.full_name) setHasUnseenBeforeDriver(true);
+    }
+  }, [beforeAssignedDriver, beforeRiderSeenKey]);
+
+  useEffect(() => {
+    if (!afterAssignedDriver) {
+      setHasUnseenAfterDriver(false);
+    } else {
+      const seen = localStorage.getItem(afterRiderSeenKey);
+      if (seen !== afterAssignedDriver.full_name) setHasUnseenAfterDriver(true);
+    }
+  }, [afterAssignedDriver, afterRiderSeenKey]);
+
   const showDetail = (leg: "before" | "after"): void => {
     if (mainRef.current) {
       setLockedHeight(mainRef.current.offsetHeight);
     }
     setActiveLeg(leg);
     setView("detail");
+    // If rider is viewing their driver assignment, mark as seen
+    const role = leg === "before" ? beforeRole : afterRole;
+    const driver = leg === "before" ? beforeAssignedDriver : afterAssignedDriver;
+    if (role === "rider" && driver) {
+      markDriverSeen(leg);
+    }
   };
 
   const showMain = (): void => {
@@ -134,11 +216,13 @@ export function SubmittedEventCard({
       })
     : null;
 
-  const hasAssignment = 
-    (beforeRole === "driver" && assignedRiders.length > 0) ||
-    (beforeRole === "rider" && !!assignedDriver) ||
-    (afterRole === "driver" && assignedRiders.length > 0) ||
-    (afterRole === "rider" && !!assignedDriver);
+  const hasBeforeAssignment =
+    (beforeRole === "driver" && beforeAssignedRiders.length > 0) ||
+    (beforeRole === "rider" && !!beforeAssignedDriver);
+
+  const hasAfterAssignment =
+    (afterRole === "driver" && afterAssignedRiders.length > 0) ||
+    (afterRole === "rider" && !!afterAssignedDriver);
 
   return (
     <div
@@ -152,7 +236,7 @@ export function SubmittedEventCard({
         transition={{ type: "tween", duration: 0.3, ease: "easeOut" }}
       >
         {/* Main view */}
-        <div ref={mainRef} className="flex w-1/2 flex-col overflow-hidden">
+        <div ref={mainRef} className="w-1/2">
         {/* Section 1: Event info */}
         <div className="px-5 pt-5 pb-4">
           <div className="flex items-start justify-between gap-3">
@@ -249,18 +333,18 @@ export function SubmittedEventCard({
           {(beforeRole === "driver" || beforeRole === "rider") && (
             <div
               className={`mt-3 rounded-lg px-3 py-2.5 ${
-                (beforeRole === "driver" && assignedRiders.length > 0) || (beforeRole === "rider" && assignedDriver)
+                (beforeRole === "driver" && beforeAssignedRiders.length > 0) || (beforeRole === "rider" && beforeAssignedDriver)
                   ? "border border-border/60 active:bg-secondary/80 transition-colors cursor-pointer"
                   : ""
               }`}
-              onClick={hasAssignment ? () => showDetail("before") : undefined}
-              role={hasAssignment ? "button" : undefined}
-              tabIndex={hasAssignment ? 0 : undefined}
+              onClick={hasBeforeAssignment ? () => showDetail("before") : undefined}
+              role={hasBeforeAssignment ? "button" : undefined}
+              tabIndex={hasBeforeAssignment ? 0 : undefined}
             >
-              {beforeRole === "driver" && assignedRiders.length > 0 ? (
+              {beforeRole === "driver" && beforeAssignedRiders.length > 0 ? (
                 <div className="flex items-center gap-2.5">
                   <AvatarGroup>
-                    {assignedRiders.map((rider, i) => (
+                    {beforeAssignedRiders.map((rider, i) => (
                       <Avatar key={i} size="sm">
                         {rider.avatar_url && <AvatarImage src={rider.avatar_url} />}
                         <AvatarFallback>{getInitials(rider.full_name)}</AvatarFallback>
@@ -268,19 +352,25 @@ export function SubmittedEventCard({
                     ))}
                   </AvatarGroup>
                   <p className="min-w-0 flex-1 text-[11px] text-muted-foreground">
-                    {assignedRiders.length} {assignedRiders.length === 1 ? "rider" : "riders"} assigned
+                    {beforeAssignedRiders.length} {beforeAssignedRiders.length === 1 ? "rider" : "riders"} assigned
                   </p>
+                  {hasUnsentBeforeRiders && (
+                    <span className="size-2 rounded-full bg-foreground shrink-0" />
+                  )}
                   <HugeiconsIcon icon={ArrowRight01Icon} className="size-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
                 </div>
-              ) : beforeRole === "rider" && assignedDriver ? (
+              ) : beforeRole === "rider" && beforeAssignedDriver ? (
                 <div className="flex items-center gap-2.5">
                   <Avatar size="sm">
-                    {assignedDriver.avatar_url && <AvatarImage src={assignedDriver.avatar_url} />}
-                    <AvatarFallback>{getInitials(assignedDriver.full_name)}</AvatarFallback>
+                    {beforeAssignedDriver.avatar_url && <AvatarImage src={beforeAssignedDriver.avatar_url} />}
+                    <AvatarFallback>{getInitials(beforeAssignedDriver.full_name)}</AvatarFallback>
                   </Avatar>
                   <p className="min-w-0 flex-1 text-[11px] text-muted-foreground">
-                    {assignedDriver.full_name} is your driver
+                    {beforeAssignedDriver.full_name} is your driver
                   </p>
+                  {hasUnseenBeforeDriver && (
+                    <span className="size-2 rounded-full bg-foreground shrink-0" />
+                  )}
                   <HugeiconsIcon icon={ArrowRight01Icon} className="size-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
                 </div>
               ) : (
@@ -349,18 +439,18 @@ export function SubmittedEventCard({
           {(afterRole === "driver" || afterRole === "rider") && (
             <div
               className={`mt-3 rounded-lg px-3 py-2.5 ${
-                (afterRole === "driver" && assignedRiders.length > 0) || (afterRole === "rider" && assignedDriver)
+                (afterRole === "driver" && afterAssignedRiders.length > 0) || (afterRole === "rider" && afterAssignedDriver)
                   ? "border border-border/60 active:bg-secondary/80 transition-colors cursor-pointer"
                   : ""
               }`}
-              onClick={hasAssignment ? () => showDetail("after") : undefined}
-              role={hasAssignment ? "button" : undefined}
-              tabIndex={hasAssignment ? 0 : undefined}
+              onClick={hasAfterAssignment ? () => showDetail("after") : undefined}
+              role={hasAfterAssignment ? "button" : undefined}
+              tabIndex={hasAfterAssignment ? 0 : undefined}
             >
-              {afterRole === "driver" && assignedRiders.length > 0 ? (
+              {afterRole === "driver" && afterAssignedRiders.length > 0 ? (
                 <div className="flex items-center gap-2.5">
                   <AvatarGroup>
-                    {assignedRiders.map((rider, i) => (
+                    {afterAssignedRiders.map((rider, i) => (
                       <Avatar key={i} size="sm">
                         {rider.avatar_url && <AvatarImage src={rider.avatar_url} />}
                         <AvatarFallback>{getInitials(rider.full_name)}</AvatarFallback>
@@ -368,19 +458,25 @@ export function SubmittedEventCard({
                     ))}
                   </AvatarGroup>
                   <p className="min-w-0 flex-1 text-[11px] text-muted-foreground">
-                    {assignedRiders.length} {assignedRiders.length === 1 ? "rider" : "riders"} assigned
+                    {afterAssignedRiders.length} {afterAssignedRiders.length === 1 ? "rider" : "riders"} assigned
                   </p>
+                  {hasUnsentAfterRiders && (
+                    <span className="size-2 rounded-full bg-foreground shrink-0" />
+                  )}
                   <HugeiconsIcon icon={ArrowRight01Icon} className="size-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
                 </div>
-              ) : afterRole === "rider" && assignedDriver ? (
+              ) : afterRole === "rider" && afterAssignedDriver ? (
                 <div className="flex items-center gap-2.5">
                   <Avatar size="sm">
-                    {assignedDriver.avatar_url && <AvatarImage src={assignedDriver.avatar_url} />}
-                    <AvatarFallback>{getInitials(assignedDriver.full_name)}</AvatarFallback>
+                    {afterAssignedDriver.avatar_url && <AvatarImage src={afterAssignedDriver.avatar_url} />}
+                    <AvatarFallback>{getInitials(afterAssignedDriver.full_name)}</AvatarFallback>
                   </Avatar>
                   <p className="min-w-0 flex-1 text-[11px] text-muted-foreground">
-                    {assignedDriver.full_name} is your driver
+                    {afterAssignedDriver.full_name} is your driver
                   </p>
+                  {hasUnseenAfterDriver && (
+                    <span className="size-2 rounded-full bg-foreground shrink-0" />
+                  )}
                   <HugeiconsIcon icon={ArrowRight01Icon} className="size-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
                 </div>
               ) : (
@@ -393,22 +489,6 @@ export function SubmittedEventCard({
             </div>
           )}
         </div>
-
-        {/* Fluid fill — fills remaining space in main view */}
-        <div className="relative flex-1">
-          <svg
-            className="animate-fluid-wave absolute -top-4 left-0 w-[200%]"
-            viewBox="0 0 800 40"
-            preserveAspectRatio="none"
-            style={{ height: 20 }}
-          >
-            <path
-              d="M0,20 Q50,10 100,20 Q150,30 200,20 Q250,10 300,20 Q350,30 400,20 Q450,10 500,20 Q550,30 600,20 Q650,10 700,20 Q750,30 800,20 L800,40 L0,40 Z"
-              className="fill-foreground"
-            />
-          </svg>
-          <div className="absolute inset-0 bg-foreground" />
-        </div>
         </div>
 
         {/* Detail view */}
@@ -417,8 +497,8 @@ export function SubmittedEventCard({
               title={title}
               location={location}
               leg={activeLeg}
-              riders={assignedRiders}
-              driver={assignedDriver}
+              riders={activeLeg === "before" ? beforeAssignedRiders : afterAssignedRiders}
+              driver={activeLeg === "before" ? beforeAssignedDriver : afterAssignedDriver}
               isDriver={
                 (activeLeg === "before" && beforeRole === "driver") ||
                 (activeLeg === "after" && afterRole === "driver")
@@ -426,21 +506,39 @@ export function SubmittedEventCard({
               driverPickupLat={
                 (activeLeg === "before" && beforeRole === "driver") || (activeLeg === "after" && afterRole === "driver")
                   ? pickupLat
-                  : assignedDriver?.pickup_lat ?? null
+                  : (activeLeg === "before" ? beforeAssignedDriver : afterAssignedDriver)?.pickup_lat ?? null
               }
               driverPickupLng={
                 (activeLeg === "before" && beforeRole === "driver") || (activeLeg === "after" && afterRole === "driver")
                   ? pickupLng
-                  : assignedDriver?.pickup_lng ?? null
+                  : (activeLeg === "before" ? beforeAssignedDriver : afterAssignedDriver)?.pickup_lng ?? null
               }
               returnLat={returnLat}
               returnLng={returnLng}
-              carpoolId={carpoolId}
+              carpoolId={activeLeg === "before" ? beforeCarpoolId : afterCarpoolId}
               carpoolsSentAt={carpoolsSentAt}
               onBack={showMain}
             />
         </div>
       </motion.div>
+
+      {/* Fluid wave at bottom */}
+      <div
+        className={`pointer-events-none absolute bottom-0 left-0 z-10 w-full transition-opacity duration-300 ${view === "detail" ? "opacity-0" : "opacity-100"}`}
+      >
+        <svg
+          className="animate-fluid-wave block w-[200%]"
+          viewBox="0 0 800 40"
+          preserveAspectRatio="none"
+          style={{ height: 20 }}
+        >
+          <path
+            d="M0,20 Q50,10 100,20 Q150,30 200,20 Q250,10 300,20 Q350,30 400,20 Q450,10 500,20 Q550,30 600,20 Q650,10 700,20 Q750,30 800,20 L800,40 L0,40 Z"
+            className="fill-foreground"
+          />
+        </svg>
+        <div className="h-1 bg-foreground" />
+      </div>
     </div>
   );
 }

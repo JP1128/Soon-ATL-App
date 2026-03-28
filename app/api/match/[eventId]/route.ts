@@ -48,6 +48,8 @@ export async function POST(_request: Request, { params }: RouteParams): Promise<
   interface ResponseRow {
     user_id: string;
     role: string;
+    before_role: string | null;
+    after_role: string | null;
     pickup_lat: number | null;
     pickup_lng: number | null;
     available_seats: number | null;
@@ -67,33 +69,6 @@ export async function POST(_request: Request, { params }: RouteParams): Promise<
     );
   }
 
-  const drivers = responses
-    .filter(
-      (r) =>
-        r.role === "driver" &&
-        r.pickup_lat != null &&
-        r.pickup_lng != null
-    )
-    .map((r) => ({
-      userId: r.user_id,
-      lat: r.pickup_lat!,
-      lng: r.pickup_lng!,
-      availableSeats: r.available_seats ?? 3,
-    }));
-
-  const riders = responses
-    .filter(
-      (r) =>
-        r.role === "rider" &&
-        r.pickup_lat != null &&
-        r.pickup_lng != null
-    )
-    .map((r) => ({
-      userId: r.user_id,
-      lat: r.pickup_lat!,
-      lng: r.pickup_lng!,
-    }));
-
   // Collect all preferences
   const preferences = responses.flatMap((r) =>
     (r.preferences ?? []).map((p) => ({
@@ -103,36 +78,75 @@ export async function POST(_request: Request, { params }: RouteParams): Promise<
     }))
   );
 
-  // Use 0,0 as placeholder destination — will use actual event coordinates later
-  const assignments = matchCarpools(drivers, riders, preferences, 0, 0);
-
   // Delete existing carpools for this event
   await supabase.from("carpools").delete().eq("event_id", eventId);
 
-  // Insert new carpools
-  for (const assignment of assignments) {
-    const { data: carpool, error: carpoolError } = await supabase
-      .from("carpools")
-      .insert({
-        event_id: eventId,
-        driver_id: assignment.driverId,
-        status: "auto",
-      })
-      .select()
-      .single();
+  const allAssignments: Array<{ leg: string; driverId: string; riderIds: string[] }> = [];
 
-    if (carpoolError || !carpool) continue;
+  // Run matching for each leg
+  for (const legKey of ["before", "after"] as const) {
+    const roleField = legKey === "before" ? "before_role" : "after_role";
 
-    if (assignment.riderIds.length > 0) {
-      const riderRows = assignment.riderIds.map((riderId, index) => ({
-        carpool_id: carpool.id,
-        rider_id: riderId,
-        pickup_order: index + 1,
+    const drivers = responses
+      .filter(
+        (r) =>
+          r[roleField] === "driver" &&
+          r.pickup_lat != null &&
+          r.pickup_lng != null
+      )
+      .map((r) => ({
+        userId: r.user_id,
+        lat: r.pickup_lat!,
+        lng: r.pickup_lng!,
+        availableSeats: r.available_seats ?? 3,
       }));
 
-      await supabase.from("carpool_riders").insert(riderRows);
+    const riders = responses
+      .filter(
+        (r) =>
+          r[roleField] === "rider" &&
+          r.pickup_lat != null &&
+          r.pickup_lng != null
+      )
+      .map((r) => ({
+        userId: r.user_id,
+        lat: r.pickup_lat!,
+        lng: r.pickup_lng!,
+      }));
+
+    if (drivers.length === 0 || riders.length === 0) continue;
+
+    // Use 0,0 as placeholder destination — will use actual event coordinates later
+    const assignments = matchCarpools(drivers, riders, preferences, 0, 0);
+
+    // Insert new carpools for this leg
+    for (const assignment of assignments) {
+      const { data: carpool, error: carpoolError } = await supabase
+        .from("carpools")
+        .insert({
+          event_id: eventId,
+          driver_id: assignment.driverId,
+          leg: legKey,
+          status: "auto",
+        })
+        .select()
+        .single();
+
+      if (carpoolError || !carpool) continue;
+
+      if (assignment.riderIds.length > 0) {
+        const riderRows = assignment.riderIds.map((riderId, index) => ({
+          carpool_id: carpool.id,
+          rider_id: riderId,
+          pickup_order: index + 1,
+        }));
+
+        await supabase.from("carpool_riders").insert(riderRows);
+      }
+
+      allAssignments.push({ leg: legKey, ...assignment });
     }
   }
 
-  return NextResponse.json({ success: true, assignments });
+  return NextResponse.json({ success: true, assignments: allAssignments });
 }

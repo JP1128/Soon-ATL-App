@@ -14,6 +14,7 @@ import { ArrowDown01Icon, Car01Icon, SteeringIcon, UserGroupIcon, UserAdd01Icon,
 import { cn, formatPhoneNumber } from "@/lib/utils";
 import { triggerFluidWave, dismissFluidWave } from "@/components/ui/fluid-wave-loader";
 import { Button } from "@/components/ui/button";
+import type { PublishedCarpoolEntry } from "@/types/database";
 
 /* ── Haversine + route helpers (module-level, no hooks) ────── */
 const ROAD_FACTOR = 1.3;
@@ -96,6 +97,7 @@ interface ResponseRow {
 interface CarpoolRow {
   id: string;
   driver_id: string;
+  leg: string;
   carpool_riders: Array<{
     rider_id: string;
     pickup_order: number;
@@ -130,6 +132,7 @@ interface CarpoolAssignmentsProps {
   eventId: string;
   eventLocation: string;
   carpoolsSentAt: string | null;
+  publishedCarpools: { before: PublishedCarpoolEntry[]; after: PublishedCarpoolEntry[] } | null;
 }
 
 function getInitials(name: string): string {
@@ -195,10 +198,54 @@ function ScrollReveal({ children, className, scrollRoot }: { children: React.Rea
 
 import { GOOGLE_MAPS_LIBRARIES } from "@/lib/google-maps/constants";
 
+/** Compare live carpools with published snapshot to detect unsent changes. */
+function hasChangesFromPublished(
+  liveCarpools: CarpoolRow[],
+  published: { before: PublishedCarpoolEntry[]; after: PublishedCarpoolEntry[] } | null,
+): boolean {
+  if (!published) return liveCarpools.length > 0;
+
+  // Check each leg independently
+  for (const legKey of ["before", "after"] as const) {
+    const legCarpools = liveCarpools.filter((c) => c.leg === legKey);
+    const legPublished = published[legKey] ?? [];
+
+    const liveMap = new Map<string, string[]>();
+    for (const c of legCarpools) {
+      const riderIds = [...c.carpool_riders]
+        .sort((a, b) => a.pickup_order - b.pickup_order)
+        .map((r) => r.rider_id);
+      liveMap.set(c.driver_id, riderIds);
+    }
+
+    const pubMap = new Map<string, string[]>();
+    for (const c of legPublished) {
+      const riderIds = [...c.riders]
+        .sort((a, b) => a.pickup_order - b.pickup_order)
+        .map((r) => r.rider_id);
+      pubMap.set(c.driver_id, riderIds);
+    }
+
+    if (liveMap.size !== pubMap.size) return true;
+
+    for (const [driverId, liveRiders] of liveMap) {
+      const pubRiders = pubMap.get(driverId);
+      if (!pubRiders) return true;
+      if (liveRiders.length !== pubRiders.length) return true;
+      for (let i = 0; i < liveRiders.length; i++) {
+        if (liveRiders[i] !== pubRiders[i]) return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 export function CarpoolAssignments({
   eventId,
   eventLocation,
   carpoolsSentAt,
+  publishedCarpools,
 }: CarpoolAssignmentsProps): React.ReactElement {
   const [responses, setResponses] = useState<ResponseRow[]>([]);
   const [carpools, setCarpools] = useState<CarpoolRow[]>([]);
@@ -232,6 +279,68 @@ export function CarpoolAssignments({
   const [showSendConfirm, setShowSendConfirm] = useState(false);
   const [sentAt, setSentAt] = useState<string | null>(carpoolsSentAt);
   const [sending, setSending] = useState(false);
+  const [published, setPublished] = useState<{ before: PublishedCarpoolEntry[]; after: PublishedCarpoolEntry[] } | null>(publishedCarpools);
+
+  const hasUnsentChanges = useMemo(
+    () => hasChangesFromPublished(carpools, published),
+    [carpools, published],
+  );
+
+  /** Set of user IDs (drivers + riders) whose assignment changed vs published snapshot for the current leg. */
+  const changedUserIds = useMemo(() => {
+    const changed = new Set<string>();
+    const legCarpools = carpools.filter((c) => c.leg === leg);
+    const legPublished = published?.[leg] ?? null;
+
+    if (!legPublished) {
+      // No snapshot yet — every assigned user is "new"
+      for (const c of legCarpools) {
+        changed.add(c.driver_id);
+        for (const r of c.carpool_riders) changed.add(r.rider_id);
+      }
+      return changed;
+    }
+
+    // Build maps: driver -> sorted rider list
+    const liveMap = new Map<string, string[]>();
+    for (const c of legCarpools) {
+      liveMap.set(
+        c.driver_id,
+        [...c.carpool_riders].sort((a, b) => a.pickup_order - b.pickup_order).map((r) => r.rider_id),
+      );
+    }
+
+    const pubMap = new Map<string, string[]>();
+    for (const c of legPublished) {
+      pubMap.set(
+        c.driver_id,
+        [...c.riders].sort((a, b) => a.pickup_order - b.pickup_order).map((r) => r.rider_id),
+      );
+    }
+
+    // Drivers added or whose rider list changed
+    for (const [driverId, liveRiders] of liveMap) {
+      const pubRiders = pubMap.get(driverId);
+      if (!pubRiders || liveRiders.length !== pubRiders.length || liveRiders.some((id, i) => id !== pubRiders[i])) {
+        changed.add(driverId);
+        // All riders in this driver's carpool are affected
+        for (const rid of liveRiders) changed.add(rid);
+        if (pubRiders) {
+          for (const rid of pubRiders) changed.add(rid);
+        }
+      }
+    }
+
+    // Drivers removed from live
+    for (const [driverId, pubRiders] of pubMap) {
+      if (!liveMap.has(driverId)) {
+        changed.add(driverId);
+        for (const rid of pubRiders) changed.add(rid);
+      }
+    }
+
+    return changed;
+  }, [carpools, published, leg]);
 
   const checkScroll = useCallback((): void => {
     const el = scrollRef.current;
@@ -368,9 +477,10 @@ export function CarpoolAssignments({
     const legDrivers = responses.filter((r) => r[roleField] === "driver");
     const legRiders = responses.filter((r) => r[roleField] === "rider");
 
-    // Build assignment map from carpools: driver_id -> rider_ids
+    // Build assignment map from carpools for this leg: driver_id -> rider_ids
+    const legCarpools = carpools.filter((c) => c.leg === leg);
     const assignmentMap = new Map<string, string[]>();
-    for (const c of carpools) {
+    for (const c of legCarpools) {
       const riderIds = c.carpool_riders
         .sort((a, b) => a.pickup_order - b.pickup_order)
         .map((cr) => cr.rider_id);
@@ -453,8 +563,9 @@ export function CarpoolAssignments({
       const roleField = legKey === "before" ? "before_role" : "after_role";
       const legRiders = responses.filter((r) => r[roleField] === "rider");
       const legDrivers = responses.filter((r) => r[roleField] === "driver");
+      const legCarpools = carpools.filter((c) => c.leg === legKey);
       const assignmentMap = new Map<string, string[]>();
-      for (const c of carpools) {
+      for (const c of legCarpools) {
         assignmentMap.set(c.driver_id, c.carpool_riders.map((cr) => cr.rider_id));
       }
       const assigned = new Set(
@@ -574,14 +685,17 @@ export function CarpoolAssignments({
     if (!addRiderTarget || riderIds.length === 0) return;
     const { driverId } = addRiderTarget;
 
-    // Optimistically update local state
+    // Optimistically update local state — only modify carpools in the current leg
     setCarpools((prev) => {
-      let updated = prev.map((c) => ({
-        ...c,
-        carpool_riders: c.carpool_riders.filter((cr) => !riderIds.includes(cr.rider_id)),
-      }));
+      let updated = prev.map((c) => {
+        if (c.leg !== leg) return c;
+        return {
+          ...c,
+          carpool_riders: c.carpool_riders.filter((cr) => !riderIds.includes(cr.rider_id)),
+        };
+      });
 
-      const existing = updated.find((c) => c.driver_id === driverId);
+      const existing = updated.find((c) => c.driver_id === driverId && c.leg === leg);
       if (existing) {
         let nextOrder = existing.carpool_riders.length + 1;
         for (const riderId of riderIds) {
@@ -594,6 +708,7 @@ export function CarpoolAssignments({
         updated.push({
           id: crypto.randomUUID(),
           driver_id: driverId,
+          leg,
           carpool_riders: riderIds.map((riderId, i) => ({ rider_id: riderId, pickup_order: i + 1 })),
         });
       }
@@ -609,7 +724,7 @@ export function CarpoolAssignments({
         await fetch(`/api/events/${eventId}/carpools`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ driverId, riderId }),
+          body: JSON.stringify({ driverId, riderId, leg }),
         });
       }
     } catch {
@@ -622,12 +737,15 @@ export function CarpoolAssignments({
   }
 
   async function handleRemoveRider(riderId: string): Promise<void> {
-    // Optimistically remove from local state
+    // Optimistically remove from local state (only current leg)
     setCarpools((prev) =>
-      prev.map((c) => ({
-        ...c,
-        carpool_riders: c.carpool_riders.filter((cr) => cr.rider_id !== riderId),
-      }))
+      prev.map((c) => {
+        if (c.leg !== leg) return c;
+        return {
+          ...c,
+          carpool_riders: c.carpool_riders.filter((cr) => cr.rider_id !== riderId),
+        };
+      })
     );
     setRiderDetailTarget(null);
 
@@ -635,7 +753,7 @@ export function CarpoolAssignments({
       await fetch(`/api/events/${eventId}/carpools`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ riderId }),
+        body: JSON.stringify({ riderId, leg }),
       });
     } catch {
       const res = await fetch(`/api/events/${eventId}/carpools`);
@@ -647,14 +765,17 @@ export function CarpoolAssignments({
   }
 
   async function handleReassignRider(riderId: string, newDriverId: string): Promise<void> {
-    // Optimistically update
+    // Optimistically update (only current leg)
     setCarpools((prev) => {
-      const updated = prev.map((c) => ({
-        ...c,
-        carpool_riders: c.carpool_riders.filter((cr) => cr.rider_id !== riderId),
-      }));
+      const updated = prev.map((c) => {
+        if (c.leg !== leg) return c;
+        return {
+          ...c,
+          carpool_riders: c.carpool_riders.filter((cr) => cr.rider_id !== riderId),
+        };
+      });
 
-      const existing = updated.find((c) => c.driver_id === newDriverId);
+      const existing = updated.find((c) => c.driver_id === newDriverId && c.leg === leg);
       if (existing) {
         existing.carpool_riders = [
           ...existing.carpool_riders,
@@ -664,6 +785,7 @@ export function CarpoolAssignments({
         updated.push({
           id: crypto.randomUUID(),
           driver_id: newDriverId,
+          leg,
           carpool_riders: [{ rider_id: riderId, pickup_order: 1 }],
         });
       }
@@ -675,7 +797,7 @@ export function CarpoolAssignments({
       await fetch(`/api/events/${eventId}/carpools`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ driverId: newDriverId, riderId }),
+        body: JSON.stringify({ driverId: newDriverId, riderId, leg }),
       });
     } catch {
       const res = await fetch(`/api/events/${eventId}/carpools`);
@@ -696,6 +818,19 @@ export function CarpoolAssignments({
       if (res.ok) {
         const data = await res.json();
         setSentAt(data.carpools_sent_at);
+        // Update local published state to match current live carpools (per-leg)
+        const toEntries = (items: CarpoolRow[]): PublishedCarpoolEntry[] =>
+          items.map((c) => ({
+            id: c.id,
+            driver_id: c.driver_id,
+            riders: [...c.carpool_riders]
+              .sort((a, b) => a.pickup_order - b.pickup_order)
+              .map((r) => ({ rider_id: r.rider_id, pickup_order: r.pickup_order })),
+          }));
+        setPublished({
+          before: toEntries(carpools.filter((c) => c.leg === "before")),
+          after: toEntries(carpools.filter((c) => c.leg === "after")),
+        });
       }
     } catch {
       // silently fail
@@ -748,7 +883,7 @@ export function CarpoolAssignments({
         {/* Header */}
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-semibold">Carpool Assignment</h1>
-          <Button size="sm" onClick={() => setShowSendConfirm(true)}>
+          <Button size="sm" onClick={() => setShowSendConfirm(true)} disabled={!hasUnsentChanges}>
             <HugeiconsIcon icon={SentIcon} className="size-4" strokeWidth={1.5} />
             {sentAt ? "Review Update" : "Review"}
           </Button>
@@ -760,7 +895,7 @@ export function CarpoolAssignments({
           <div className="flex rounded-lg bg-secondary/50 p-0.5">
             <button
               type="button"
-              onClick={() => setLeg("before")}
+              onClick={() => { setLeg("before"); setExpandedDriver(null); }}
               className={cn(
                 "inline-flex flex-1 items-center justify-center rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
                 leg === "before"
@@ -776,7 +911,7 @@ export function CarpoolAssignments({
             </button>
             <button
               type="button"
-              onClick={() => setLeg("after")}
+              onClick={() => { setLeg("after"); setExpandedDriver(null); }}
               className={cn(
                 "inline-flex flex-1 items-center justify-center rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
                 leg === "after"
@@ -910,9 +1045,14 @@ export function CarpoolAssignments({
                           </AvatarFallback>
                         </Avatar>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-medium">
-                            {driver.profile.full_name}
-                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="truncate text-xs font-medium">
+                              {driver.profile.full_name}
+                            </p>
+                            {changedUserIds.has(driver.userId) && (
+                              <span className="size-1.5 rounded-full bg-foreground shrink-0" />
+                            )}
+                          </div>
                           <p className="truncate text-[11px] text-muted-foreground">
                             {formatPhone(driver.profile.phone_number)}
                             {(() => {
@@ -1049,9 +1189,14 @@ export function CarpoolAssignments({
                                       </AvatarFallback>
                                     </Avatar>
                                     <div className="min-w-0 flex-1">
-                                      <p className="truncate text-xs">
-                                        {rider.profile.full_name}
-                                      </p>
+                                      <div className="flex items-center gap-1.5">
+                                        <p className="truncate text-xs">
+                                          {rider.profile.full_name}
+                                        </p>
+                                        {changedUserIds.has(rider.userId) && (
+                                          <span className="size-1.5 rounded-full bg-foreground shrink-0" />
+                                        )}
+                                      </div>
                                       <p className="truncate text-[11px] text-muted-foreground">
                                         {formatPhone(rider.profile.phone_number)}
                                         {rider.departureTime && (
@@ -1145,9 +1290,14 @@ export function CarpoolAssignments({
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-medium">
-                          {rider.profile.full_name}
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="truncate text-xs font-medium">
+                            {rider.profile.full_name}
+                          </p>
+                          {changedUserIds.has(rider.userId) && (
+                            <span className="size-1.5 rounded-full bg-foreground shrink-0" />
+                          )}
+                        </div>
                         <p className="truncate text-[11px] text-muted-foreground">
                           {formatPhone(rider.profile.phone_number)}
                         </p>
@@ -1415,7 +1565,7 @@ function RiderSelectionOverlay({
           </div>
 
           {/* Rider list */}
-          <div className="max-h-[60vh] overflow-y-auto -mx-1 px-1 space-y-1 scrollbar-none">
+          <div className="max-h-[60vh] overflow-y-auto -mx-1 px-1 -my-1 py-1 space-y-1 scrollbar-none">
             {riders.length === 0 ? (
               <p className="py-4 text-center text-xs text-muted-foreground">
                 No riders available

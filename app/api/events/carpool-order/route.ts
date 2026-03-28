@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import type { PublishedCarpoolEntry } from "@/types/database";
 
 export async function PATCH(request: Request): Promise<NextResponse> {
   const supabase = await createClient();
@@ -21,9 +22,9 @@ export async function PATCH(request: Request): Promise<NextResponse> {
   // Verify the user is the driver of this carpool
   const { data: carpool } = await supabase
     .from("carpools")
-    .select("id, driver_id")
+    .select("id, driver_id, event_id, leg")
     .eq("id", carpoolId)
-    .single() as { data: { id: string; driver_id: string } | null };
+    .single() as { data: { id: string; driver_id: string; event_id: string; leg: string } | null };
 
   if (!carpool || carpool.driver_id !== user.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -43,6 +44,37 @@ export async function PATCH(request: Request): Promise<NextResponse> {
 
   if (failed?.error) {
     return NextResponse.json({ error: "Failed to update order" }, { status: 500 });
+  }
+
+  // Sync the updated pickup order into published_carpools snapshot
+  const { data: event } = await supabase
+    .from("events")
+    .select("published_carpools")
+    .eq("id", carpool.event_id)
+    .single() as { data: { published_carpools: { before: PublishedCarpoolEntry[]; after: PublishedCarpoolEntry[] } | null } | null };
+
+  if (event?.published_carpools) {
+    const legKey = carpool.leg as "before" | "after";
+    const updatedLeg = (event.published_carpools[legKey] ?? []).map((entry) => {
+      if (entry.id !== carpoolId) return entry;
+      return {
+        ...entry,
+        riders: riderOrder.map((riderId, index) => ({
+          rider_id: riderId,
+          pickup_order: index + 1,
+        })),
+      };
+    });
+
+    const updatedSnapshot = {
+      ...event.published_carpools,
+      [legKey]: updatedLeg,
+    };
+
+    await supabase
+      .from("events")
+      .update({ published_carpools: updatedSnapshot })
+      .eq("id", carpool.event_id);
   }
 
   return NextResponse.json({ success: true });

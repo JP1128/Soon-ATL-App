@@ -59,12 +59,13 @@ export async function GET(
   const { data: carpools } = await supabase
     .from("carpools")
     .select(
-      "id, driver_id, carpool_riders(rider_id, pickup_order)"
+      "id, driver_id, leg, carpool_riders(rider_id, pickup_order)"
     )
     .eq("event_id", eventId) as {
     data: Array<{
       id: string;
       driver_id: string;
+      leg: string;
       carpool_riders: Array<{
         rider_id: string;
         pickup_order: number;
@@ -93,20 +94,21 @@ export async function POST(
   }
 
   const body = await request.json();
-  const { driverId, riderId } = body as { driverId: string; riderId: string };
+  const { driverId, riderId, leg } = body as { driverId: string; riderId: string; leg: string };
 
-  if (!driverId || !riderId) {
+  if (!driverId || !riderId || !leg) {
     return NextResponse.json(
-      { error: "driverId and riderId are required" },
+      { error: "driverId, riderId, and leg are required" },
       { status: 400 }
     );
   }
 
-  // Remove rider from any existing carpool in this event
+  // Remove rider from any existing carpool in this event for the same leg
   const { data: existingCarpools } = await supabase
     .from("carpools")
     .select("id")
-    .eq("event_id", eventId) as { data: Array<{ id: string }> | null };
+    .eq("event_id", eventId)
+    .eq("leg", leg) as { data: Array<{ id: string }> | null };
 
   if (existingCarpools && existingCarpools.length > 0) {
     const carpoolIds = existingCarpools.map((c) => c.id);
@@ -117,12 +119,13 @@ export async function POST(
       .in("carpool_id", carpoolIds);
   }
 
-  // Find or create a carpool for the driver
+  // Find or create a carpool for the driver in this leg
   let { data: carpool } = await supabase
     .from("carpools")
     .select("id")
     .eq("event_id", eventId)
     .eq("driver_id", driverId)
+    .eq("leg", leg)
     .single();
 
   if (!carpool) {
@@ -131,6 +134,7 @@ export async function POST(
       .insert({
         event_id: eventId,
         driver_id: driverId,
+        leg,
         route_summary: {},
         total_distance_meters: 0,
         status: "manual",
@@ -194,20 +198,21 @@ export async function DELETE(
   }
 
   const body = await request.json();
-  const { riderId } = body as { riderId: string };
+  const { riderId, leg } = body as { riderId: string; leg: string };
 
-  if (!riderId) {
+  if (!riderId || !leg) {
     return NextResponse.json(
-      { error: "riderId is required" },
+      { error: "riderId and leg are required" },
       { status: 400 }
     );
   }
 
-  // Find all carpools for this event and remove the rider
+  // Find all carpools for this event and leg, and remove the rider
   const { data: existingCarpools } = await supabase
     .from("carpools")
     .select("id")
-    .eq("event_id", eventId) as { data: Array<{ id: string }> | null };
+    .eq("event_id", eventId)
+    .eq("leg", leg) as { data: Array<{ id: string }> | null };
 
   if (existingCarpools && existingCarpools.length > 0) {
     const carpoolIds = existingCarpools.map((c) => c.id);
@@ -245,9 +250,39 @@ export async function PATCH(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  // Snapshot current carpools + riders into published_carpools, grouped by leg
+  const { data: carpools } = await supabase
+    .from("carpools")
+    .select("id, driver_id, leg, carpool_riders(rider_id, pickup_order)")
+    .eq("event_id", eventId) as {
+    data: Array<{
+      id: string;
+      driver_id: string;
+      leg: string;
+      carpool_riders: Array<{ rider_id: string; pickup_order: number }>;
+    }> | null;
+  };
+
+  const toEntries = (items: typeof carpools): Array<{ id: string; driver_id: string; riders: Array<{ rider_id: string; pickup_order: number }> }> =>
+    (items ?? []).map((c) => ({
+      id: c.id,
+      driver_id: c.driver_id,
+      riders: (c.carpool_riders ?? [])
+        .sort((a, b) => a.pickup_order - b.pickup_order)
+        .map((r) => ({ rider_id: r.rider_id, pickup_order: r.pickup_order })),
+    }));
+
+  const publishedCarpools = {
+    before: toEntries((carpools ?? []).filter((c) => c.leg === "before")),
+    after: toEntries((carpools ?? []).filter((c) => c.leg === "after")),
+  };
+
   const { data, error } = await supabase
     .from("events")
-    .update({ carpools_sent_at: new Date().toISOString() })
+    .update({
+      carpools_sent_at: new Date().toISOString(),
+      published_carpools: publishedCarpools,
+    })
     .eq("id", eventId)
     .select("carpools_sent_at")
     .single();

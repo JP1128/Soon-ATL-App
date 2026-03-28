@@ -26,6 +26,8 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowLeft01Icon,
   SentIcon,
+  Tick02Icon,
+  UndoIcon,
   Clock01Icon,
   Road01Icon,
   DragDropVerticalIcon,
@@ -90,6 +92,17 @@ const MAP_STYLES: google.maps.MapTypeStyle[] = [
 ];
 
 /** Route.computeRoutes() typed */
+interface ComputedRouteLeg {
+  distanceMeters?: number;
+  durationMillis?: number;
+}
+
+interface ComputedRoute {
+  createPolylines(): google.maps.Polyline[];
+  distanceMeters?: number;
+  legs?: ComputedRouteLeg[];
+}
+
 interface RoutesAPIRoute {
   computeRoutes(request: {
     origin: google.maps.LatLng;
@@ -97,7 +110,7 @@ interface RoutesAPIRoute {
     intermediates?: Array<{ location: google.maps.LatLng }>;
     travelMode?: string;
     fields?: string[];
-  }): Promise<{ routes: Array<{ createPolylines(): google.maps.Polyline[] }> }>;
+  }): Promise<{ routes: ComputedRoute[] }>;
 }
 
 /* ── Helpers ───────────────────────────────────────────────────── */
@@ -195,10 +208,12 @@ function SortableRiderItem({
   rider,
   index,
   leg,
+  isUnsent,
 }: {
   rider: RiderData;
   index: number;
   leg: "before" | "after";
+  isUnsent: boolean;
 }): React.ReactElement {
   const {
     attributes,
@@ -234,7 +249,10 @@ function SortableRiderItem({
         <AvatarFallback>{getInitials(rider.full_name)}</AvatarFallback>
       </Avatar>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium leading-tight">{rider.full_name}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-medium leading-tight">{rider.full_name}</p>
+          {isUnsent && <span className="size-1.5 rounded-full bg-foreground shrink-0" />}
+        </div>
         {rider.phone_number && (
           <p className="text-[11px] text-muted-foreground">
             {formatPhoneNumber(rider.phone_number)}
@@ -280,11 +298,35 @@ export function CarpoolDetailView({
     version: "weekly",
   });
 
-  const [riders, setRiders] = useState(initialRiders);
+  const [riders, setRiders] = useState(initialRiders ?? []);
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
   const [eventCoords, setEventCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [orderChanged, setOrderChanged] = useState(false);
+  const savedOrderRef = useRef((initialRiders ?? []).map((r) => r.id));
+  const orderChanged = useMemo(() => {
+    const currentIds = riders.map((r) => r.id);
+    return currentIds.some((id, i) => id !== savedOrderRef.current[i]);
+  }, [riders]);
+  const sentKey = carpoolId ? `carpool-order-sent-${carpoolId}` : null;
+  const sentRiderIds = useMemo(() => {
+    if (!sentKey) return new Set<string>();
+    const raw = localStorage.getItem(sentKey);
+    if (!raw) return new Set<string>();
+    try {
+      return new Set<string>(JSON.parse(raw) as string[]);
+    } catch {
+      return new Set<string>();
+    }
+  }, [sentKey]);
+  const [sentRiders, setSentRiders] = useState(sentRiderIds);
+  const unsentRiderIds = useMemo(() => {
+    const unsent = new Set<string>();
+    for (const r of riders) {
+      if (!sentRiders.has(r.id)) unsent.add(r.id);
+    }
+    return unsent;
+  }, [riders, sentRiders]);
+  const needsSend = orderChanged || unsentRiderIds.size > 0;
   const [routeInfo, setRouteInfo] = useState<{ distanceMiles: number; durationMin: number } | null>(null);
   const [routeLoading, setRouteLoading] = useState(false);
   const markersRef = useRef<google.maps.Marker[]>([]);
@@ -412,7 +454,7 @@ export function CarpoolDetailView({
     };
   }, [mapInstance, mapsLoaded, routeData, eventCoords, driver, isDriver]);
 
-  // Draw route polylines
+  // Draw route polylines + get distance/duration via Routes API
   useEffect(() => {
     const map = mapInstance;
     if (!map || !mapsLoaded || !routeData.origin || !routeData.destination) return;
@@ -421,6 +463,7 @@ export function CarpoolDetailView({
     // Clear previous polylines
     for (const p of polylinesRef.current) p.setMap(null);
     polylinesRef.current = [];
+    setRouteLoading(true);
 
     async function fetchRoute(): Promise<void> {
       if (!map || cancelled || !routeData.origin || !routeData.destination) return;
@@ -430,30 +473,43 @@ export function CarpoolDetailView({
       }));
 
       try {
-        const { Route } = (await google.maps.importLibrary("routes")) as unknown as {
-          Route: RoutesAPIRoute;
-        };
+        const { Route } = (await google.maps.importLibrary("routes")) as unknown as { Route: RoutesAPIRoute };
 
         const { routes: computed } = await Route.computeRoutes({
           origin: new google.maps.LatLng(routeData.origin.lat, routeData.origin.lng),
           destination: new google.maps.LatLng(routeData.destination.lat, routeData.destination.lng),
           intermediates,
           travelMode: "DRIVING" as google.maps.TravelMode,
-          fields: ["path"],
+          fields: ["path", "distanceMeters", "legs"],
         });
 
-        if (!cancelled && computed[0]) {
+        if (cancelled) return;
+
+        if (computed[0]) {
+          // Draw polyline
           const polylines = computed[0].createPolylines();
           for (const p of polylines) {
             p.setOptions({ strokeColor: "#4285F4", strokeOpacity: 0.8, strokeWeight: 4 });
             p.setMap(map);
             polylinesRef.current.push(p);
           }
+
+          // Extract distance and duration
+          const route = computed[0];
+          const distanceMeters = route.distanceMeters;
+          const totalDurationMillis = route.legs?.reduce((sum, leg) => sum + (leg.durationMillis ?? 0), 0);
+          if (distanceMeters != null && totalDurationMillis != null && totalDurationMillis > 0) {
+            setRouteInfo({
+              distanceMiles: Math.round((distanceMeters / 1609.344) * 10) / 10,
+              durationMin: Math.round(totalDurationMillis / 60000),
+            });
+          }
         }
-      } catch {
+      } catch (err) {
+        console.error("[Routes API] computeRoutes failed:", err);
         // Fallback: straight lines
         if (!cancelled) {
-          const path = [routeData.origin, ...routeData.riderPositions, routeData.destination];
+          const path = [routeData.origin!, ...routeData.riderPositions, routeData.destination!];
           const p = new google.maps.Polyline({
             path,
             strokeColor: "#4285F4",
@@ -464,6 +520,7 @@ export function CarpoolDetailView({
           polylinesRef.current.push(p);
         }
       }
+      if (!cancelled) setRouteLoading(false);
     }
 
     fetchRoute();
@@ -474,47 +531,6 @@ export function CarpoolDetailView({
       polylinesRef.current = [];
     };
   }, [mapInstance, mapsLoaded, routeData]);
-
-  // Get distance/duration via DirectionsService
-  useEffect(() => {
-    if (!mapsLoaded || !routeData.origin || !routeData.destination) return;
-    let cancelled = false;
-    setRouteLoading(true);
-
-    const service = new google.maps.DirectionsService();
-    const waypoints = routeData.riderPositions.map((r) => ({
-      location: new google.maps.LatLng(r.lat, r.lng),
-      stopover: true,
-    }));
-
-    service.route(
-      {
-        origin: new google.maps.LatLng(routeData.origin.lat, routeData.origin.lng),
-        destination: new google.maps.LatLng(routeData.destination.lat, routeData.destination.lng),
-        waypoints,
-        travelMode: google.maps.TravelMode.DRIVING,
-      },
-      (result, status) => {
-        if (cancelled || status !== "OK" || !result?.routes?.[0]) return;
-        const legs = result.routes[0].legs;
-        let totalMeters = 0;
-        let totalSeconds = 0;
-        for (const leg of legs) {
-          totalMeters += leg.distance?.value ?? 0;
-          totalSeconds += leg.duration?.value ?? 0;
-        }
-        setRouteInfo({
-          distanceMiles: Math.round((totalMeters / 1609.344) * 10) / 10,
-          durationMin: Math.round(totalSeconds / 60),
-        });
-        setRouteLoading(false);
-      },
-    );
-
-    return (): void => {
-      cancelled = true;
-    };
-  }, [mapsLoaded, routeData]);
 
   // Fit bounds on map load
   const onMapLoad = useCallback(
@@ -546,7 +562,6 @@ export function CarpoolDetailView({
     const newIndex = riders.findIndex((r) => r.id === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
     setRiders(arrayMove(riders, oldIndex, newIndex));
-    setOrderChanged(true);
   };
 
   const sensors = useSensors(
@@ -556,7 +571,7 @@ export function CarpoolDetailView({
 
   // Save pickup order
   const handleSend = async (): Promise<void> => {
-    if (!carpoolId || !orderChanged) return;
+    if (!carpoolId || !needsSend) return;
     setSaving(true);
     try {
       const res = await fetch(`/api/events/carpool-order`, {
@@ -568,12 +583,23 @@ export function CarpoolDetailView({
         }),
       });
       if (!res.ok) throw new Error("Failed to save order");
-      setOrderChanged(false);
+      savedOrderRef.current = riders.map((r) => r.id);
+      if (sentKey) {
+        const riderIds = riders.map((r) => r.id);
+        localStorage.setItem(sentKey, JSON.stringify(riderIds));
+        setSentRiders(new Set(riderIds));
+      }
     } catch (err) {
       console.error("Failed to save pickup order:", err);
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleRevert = (): void => {
+    const original = savedOrderRef.current;
+    const reordered = original.map((id) => riders.find((r) => r.id === id)).filter((r): r is RiderData => !!r);
+    setRiders(reordered);
   };
 
   const legLabel = leg === "before" ? `Before ${title}` : `After ${title}`;
@@ -642,9 +668,20 @@ export function CarpoolDetailView({
       {/* Rider list (driver view) */}
       {isDriver && riders.length > 0 && (
         <div className="mt-4 min-h-0 flex-1 overflow-y-auto px-5">
-          <p className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Pickup Order
-          </p>
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Pickup Order
+            </p>
+            {orderChanged && (
+              <button
+                onClick={handleRevert}
+                className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <HugeiconsIcon icon={UndoIcon} className="size-3.5" strokeWidth={1.5} />
+                Revert
+              </button>
+            )}
+          </div>
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={riders.map((r) => r.id)} strategy={verticalListSortingStrategy}>
               <div className="space-y-1">
@@ -654,6 +691,7 @@ export function CarpoolDetailView({
                     rider={rider}
                     index={i}
                     leg={leg}
+                    isUnsent={unsentRiderIds.has(rider.id)}
                   />
                 ))}
               </div>
@@ -689,15 +727,15 @@ export function CarpoolDetailView({
           )}
           <Button
             onClick={handleSend}
-            disabled={!orderChanged || saving}
+            disabled={!needsSend || saving}
             className="w-full rounded-xl"
           >
             <HugeiconsIcon
-              icon={SentIcon}
+              icon={needsSend ? SentIcon : Tick02Icon}
               className="size-4 mr-1.5"
               strokeWidth={1.5}
             />
-            {saving ? "Saving…" : orderChanged ? "Send Update" : "Send"}
+            {saving ? "Saving…" : needsSend ? (sentRiders.size > 0 ? "Send Update" : "Send") : "Sent"}
           </Button>
         </div>
       )}

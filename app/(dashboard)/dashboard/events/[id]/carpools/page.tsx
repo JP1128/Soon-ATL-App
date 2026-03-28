@@ -33,7 +33,7 @@ export default async function CarpoolsPage({
   return (
     <div className="fixed inset-0 z-10 bg-background px-5 pt-4">
       <div className="mx-auto h-full max-w-lg">
-        <CarpoolAssignments eventId={event.id} eventLocation={event.location} carpoolsSentAt={event.carpools_sent_at} />
+        <CarpoolAssignments eventId={event.id} eventLocation={event.location} carpoolsSentAt={event.carpools_sent_at} publishedCarpools={event.published_carpools} />
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ export type EventStatus = "draft" | "open" | "closed" | "published";
 export type ResponseRole = "driver" | "rider" | "attending";
 export type PreferenceType = "prefer" | "avoid";
 export type CarpoolStatus = "auto" | "manual";
+export type CarpoolLeg = "before" | "after";
 
 export interface Profile {
   id: string;
@@ -12,6 +13,15 @@ export interface Profile {
   role: UserRole;
   phone_number: string | null;
   created_at: string;
+}
+
+export interface PublishedCarpoolEntry {
+  id: string;
+  driver_id: string;
+  riders: Array<{
+    rider_id: string;
+    pickup_order: number;
+  }>;
 }
 
 export interface Event {
@@ -24,6 +34,7 @@ export interface Event {
   created_by: string;
   sent_at: string | null;
   carpools_sent_at: string | null;
+  published_carpools: { before: PublishedCarpoolEntry[]; after: PublishedCarpoolEntry[] } | null;
   created_at: string;
 }
 
@@ -64,6 +75,7 @@ export interface Carpool {
   id: string;
   event_id: string;
   driver_id: string;
+  leg: CarpoolLeg;
   route_summary: Record<string, unknown>;
   total_distance_meters: number;
   status: CarpoolStatus;
