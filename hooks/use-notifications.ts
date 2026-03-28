@@ -28,17 +28,19 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
 export function useNotifications(): UseNotificationsReturn {
   const [permission, setPermission] = useState<NotificationPermission>("default");
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isSupported, setIsSupported] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-
-  const isSupported =
-    typeof window !== "undefined" &&
-    "serviceWorker" in navigator &&
-    "PushManager" in window &&
-    "Notification" in window;
 
   // Check current state on mount
   useEffect(() => {
-    if (!isSupported) {
+    const supported =
+      "serviceWorker" in navigator &&
+      "PushManager" in window &&
+      "Notification" in window;
+
+    setIsSupported(supported);
+
+    if (!supported) {
       setIsLoading(false);
       return;
     }
@@ -58,7 +60,7 @@ export function useNotifications(): UseNotificationsReturn {
       .finally(() => {
         setIsLoading(false);
       });
-  }, [isSupported]);
+  }, []);
 
   const subscribe = useCallback(async (): Promise<void> => {
     if (!isSupported) return;

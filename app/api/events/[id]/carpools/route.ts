@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
-  sendPushToMany,
-  type PushSubscriptionRecord,
+  notifyUsersIndividually,
+  type PushPayload,
 } from "@/lib/notifications/push";
+import type { PublishedCarpoolEntry } from "@/types/database";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -255,6 +256,13 @@ export async function PATCH(
   }
 
   // Snapshot current carpools + riders into published_carpools, grouped by leg
+  // First, fetch the old published snapshot and event title for diff-based notifications
+  const { data: eventData } = await supabase
+    .from("events")
+    .select("title, published_carpools")
+    .eq("id", eventId)
+    .single() as { data: { title: string; published_carpools: { before: PublishedCarpoolEntry[]; after: PublishedCarpoolEntry[] } | null } | null };
+
   const { data: carpools } = await supabase
     .from("carpools")
     .select("id, driver_id, leg, carpool_riders(rider_id, pickup_order)")
@@ -298,39 +306,111 @@ export async function PATCH(
     );
   }
 
-  // Send push notifications to all participants in this event
-  const participantIds = new Set<string>();
-  for (const carpool of carpools ?? []) {
-    participantIds.add(carpool.driver_id);
-    for (const rider of carpool.carpool_riders ?? []) {
-      participantIds.add(rider.rider_id);
+  // --- Diff-based notifications ---
+  // Build old assignment maps: riderId -> driverId, driverId -> Set<riderId>
+  const oldRiderToDriver = new Map<string, string>();
+  const oldDriverRiders = new Map<string, Set<string>>();
+  const oldPublished = eventData?.published_carpools;
+  if (oldPublished) {
+    for (const leg of [oldPublished.before, oldPublished.after]) {
+      for (const entry of leg ?? []) {
+        const driverRiderSet = oldDriverRiders.get(entry.driver_id) ?? new Set<string>();
+        for (const r of entry.riders) {
+          oldRiderToDriver.set(r.rider_id, entry.driver_id);
+          driverRiderSet.add(r.rider_id);
+        }
+        oldDriverRiders.set(entry.driver_id, driverRiderSet);
+      }
     }
   }
 
-  if (participantIds.size > 0) {
-    const { data: subscriptions } = (await supabase
-      .from("push_subscriptions")
-      .select("endpoint, keys_p256dh, keys_auth")
-      .in("user_id", Array.from(participantIds))) as {
-      data: PushSubscriptionRecord[] | null;
-    };
-
-    if (subscriptions && subscriptions.length > 0) {
-      const result = await sendPushToMany(subscriptions, {
-        title: "Carpool assignments are out!",
-        body: "Check the app to see your carpool details.",
-        url: "/",
-        tag: `carpools-${eventId}`,
-      });
-
-      // Clean up expired subscriptions
-      if (result.expired.length > 0) {
-        await supabase
-          .from("push_subscriptions")
-          .delete()
-          .in("endpoint", result.expired);
+  // Build new assignment maps
+  const newRiderToDriver = new Map<string, string>();
+  const newDriverRiders = new Map<string, Set<string>>();
+  for (const leg of [publishedCarpools.before, publishedCarpools.after]) {
+    for (const entry of leg ?? []) {
+      const driverRiderSet = newDriverRiders.get(entry.driver_id) ?? new Set<string>();
+      for (const r of entry.riders) {
+        newRiderToDriver.set(r.rider_id, entry.driver_id);
+        driverRiderSet.add(r.rider_id);
       }
+      newDriverRiders.set(entry.driver_id, driverRiderSet);
     }
+  }
+
+  // Collect all user IDs we need names for
+  const allUserIds = new Set<string>();
+  for (const [riderId] of oldRiderToDriver) allUserIds.add(riderId);
+  for (const [riderId] of newRiderToDriver) allUserIds.add(riderId);
+  for (const [driverId] of oldDriverRiders) allUserIds.add(driverId);
+  for (const [driverId] of newDriverRiders) allUserIds.add(driverId);
+
+  // Fetch names
+  const nameMap = new Map<string, string>();
+  if (allUserIds.size > 0) {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", Array.from(allUserIds)) as { data: Array<{ id: string; full_name: string }> | null };
+    for (const p of profiles ?? []) {
+      nameMap.set(p.id, p.full_name);
+    }
+  }
+
+  const eventTitle = eventData?.title ?? "the event";
+  const notifications: Array<{ userId: string; payload: PushPayload }> = [];
+
+  // --- Rider notifications ---
+  // All riders in the new assignments
+  for (const [riderId, newDriverId] of newRiderToDriver) {
+    const oldDriverId = oldRiderToDriver.get(riderId);
+    const driverName = nameMap.get(newDriverId) ?? "Your driver";
+
+    if (!oldDriverId) {
+      // New assignment: rider didn't have a driver before
+      notifications.push({
+        userId: riderId,
+        payload: { title: eventTitle, body: `${driverName} is your driver for ${eventTitle}`, url: "/", tag: `carpool-rider-${eventId}` },
+      });
+    } else if (oldDriverId !== newDriverId) {
+      // Driver changed
+      notifications.push({
+        userId: riderId,
+        payload: { title: eventTitle, body: `${driverName} is your new driver`, url: "/", tag: `carpool-rider-${eventId}` },
+      });
+    }
+  }
+
+  // Riders who were removed (in old but not in new)
+  for (const [riderId, oldDriverId] of oldRiderToDriver) {
+    if (!newRiderToDriver.has(riderId)) {
+      const oldDriverName = nameMap.get(oldDriverId) ?? "Your driver";
+      notifications.push({
+        userId: riderId,
+        payload: { title: eventTitle, body: `${oldDriverName} is no longer your driver. We will notify you when a driver has been assigned for you`, url: "/", tag: `carpool-rider-${eventId}` },
+      });
+    }
+  }
+
+  // --- Driver notifications ---
+  for (const [driverId, newRiders] of newDriverRiders) {
+    const oldRiders = oldDriverRiders.get(driverId) ?? new Set<string>();
+    const addedRiders = [...newRiders].filter((r) => !oldRiders.has(r));
+    const removedRiders = [...oldRiders].filter((r) => !newRiders.has(r));
+
+    if (addedRiders.length > 0 || removedRiders.length > 0) {
+      notifications.push({
+        userId: driverId,
+        payload: { title: eventTitle, body: "There was a change to your carpool assignment. Please review the pickup order and send it to your riders.", url: "/", tag: `carpool-driver-${eventId}` },
+      });
+    }
+  }
+
+  // Send all notifications (non-blocking)
+  if (notifications.length > 0) {
+    notifyUsersIndividually(supabase, notifications).catch((err) =>
+      console.error("Failed to send carpool notifications:", err)
+    );
   }
 
   return NextResponse.json({ success: true, carpools_sent_at: data.carpools_sent_at });

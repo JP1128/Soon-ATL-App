@@ -7,6 +7,15 @@ export function NotificationPrompt(): React.ReactElement | null {
   const { permission, isSubscribed, isSupported, isLoading, subscribe, unsubscribe } =
     useNotifications();
 
+  // Still determining support/subscription state
+  if (isLoading && !isSupported) {
+    return (
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <p className="text-sm font-medium text-muted-foreground">Checking notification support…</p>
+      </div>
+    );
+  }
+
   // Browser doesn't support push notifications
   if (!isSupported) {
     return (

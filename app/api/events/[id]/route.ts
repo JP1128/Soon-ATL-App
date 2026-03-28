@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { notifyUsers } from "@/lib/notifications/push";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -90,6 +91,24 @@ export async function PATCH(request: Request, { params }: RouteParams): Promise<
 
   if (error) {
     return NextResponse.json({ error: "Failed to update event" }, { status: 500 });
+  }
+
+  // Notify all members when event form is opened
+  if (updates.status === "open") {
+    const eventTitle = (data as { title: string }).title;
+    const { data: allProfiles } = await supabase
+      .from("profiles")
+      .select("id") as { data: Array<{ id: string }> | null };
+
+    if (allProfiles && allProfiles.length > 0) {
+      const allUserIds = allProfiles.map((p) => p.id);
+      notifyUsers(supabase, allUserIds, {
+        title: "Soon ATL",
+        body: `Form for ${eventTitle} is open! Check the home page for the form!`,
+        url: "/",
+        tag: `event-open-${id}`,
+      }).catch((err) => console.error("Failed to send event open notifications:", err));
+    }
   }
 
   return NextResponse.json(data);

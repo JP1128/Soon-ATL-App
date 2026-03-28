@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { notifyUsers } from "@/lib/notifications/push";
 
 interface RouteParams {
   params: Promise<{ eventId: string }>;
@@ -134,6 +135,74 @@ export async function POST(request: Request, { params }: RouteParams): Promise<N
 
       await supabase.from("preferences").insert(prefRows);
     }
+  }
+
+  // Notify organizers about the new response
+  const { data: submitter } = await supabase
+    .from("profiles")
+    .select("full_name")
+    .eq("id", user.id)
+    .single() as { data: { full_name: string } | null };
+
+  const { data: eventInfo } = await supabase
+    .from("events")
+    .select("title")
+    .eq("id", eventId)
+    .single() as { data: { title: string } | null };
+
+  // Count unassigned riders: riders who responded but aren't in any carpool
+  const { data: riderResponses } = await supabase
+    .from("responses")
+    .select("user_id")
+    .eq("event_id", eventId)
+    .in("role", ["rider"]) as { data: Array<{ user_id: string }> | null };
+
+  // Also count those with before_role or after_role = rider
+  const { data: legRiderResponses } = await supabase
+    .from("responses")
+    .select("user_id, before_role, after_role")
+    .eq("event_id", eventId) as { data: Array<{ user_id: string; before_role: string | null; after_role: string | null }> | null };
+
+  const allRiderIds = new Set<string>();
+  for (const r of riderResponses ?? []) allRiderIds.add(r.user_id);
+  for (const r of legRiderResponses ?? []) {
+    if (r.before_role === "rider" || r.after_role === "rider") allRiderIds.add(r.user_id);
+  }
+
+  // Get riders already assigned to carpools
+  const { data: eventCarpools } = await supabase
+    .from("carpools")
+    .select("id")
+    .eq("event_id", eventId) as { data: Array<{ id: string }> | null };
+
+  let assignedRiderCount = 0;
+  if (eventCarpools && eventCarpools.length > 0) {
+    const carpoolIds = eventCarpools.map((c) => c.id);
+    const { data: assignedRiders } = await supabase
+      .from("carpool_riders")
+      .select("rider_id")
+      .in("carpool_id", carpoolIds) as { data: Array<{ rider_id: string }> | null };
+    assignedRiderCount = new Set((assignedRiders ?? []).map((r) => r.rider_id)).size;
+  }
+
+  const unassignedCount = allRiderIds.size - assignedRiderCount;
+  const submitterName = submitter?.full_name ?? "Someone";
+  const eventTitle = eventInfo?.title ?? "the event";
+
+  // Get all organizer IDs
+  const { data: organizers } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("role", "organizer") as { data: Array<{ id: string }> | null };
+
+  if (organizers && organizers.length > 0) {
+    const organizerIds = organizers.map((o) => o.id);
+    notifyUsers(supabase, organizerIds, {
+      title: eventTitle,
+      body: `${submitterName} has responded to ${eventTitle} form. There are ${unassignedCount} unassigned riders. Please review the carpool assignment.`,
+      url: `/dashboard/events/${eventId}`,
+      tag: `response-${eventId}`,
+    }).catch((err) => console.error("Failed to send response notification:", err));
   }
 
   return NextResponse.json(response, { status: 201 });
