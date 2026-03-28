@@ -2,7 +2,7 @@ const sharp = require("sharp");
 const path = require("path");
 
 function makeSvg(size) {
-  const fontSize = Math.round(size * 0.32);
+  const fontSize = Math.round(size * 0.22);
   const rx = Math.round(size * 0.15);
   const spacing = Math.round(size * 0.02);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
