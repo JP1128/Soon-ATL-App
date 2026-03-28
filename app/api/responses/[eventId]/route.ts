@@ -187,10 +187,10 @@ export async function DELETE(_request: Request, { params }: RouteParams): Promis
     .from("carpools")
     .select("id")
     .eq("event_id", eventId)
-    .eq("driver_id", user.id);
+    .eq("driver_id", user.id) as { data: { id: string }[] | null };
 
   if (driverCarpools && driverCarpools.length > 0) {
-    const driverCarpoolIds = driverCarpools.map((c) => c.id);
+    const driverCarpoolIds = driverCarpools.map((c: { id: string }) => c.id);
     await supabase.from("carpool_riders").delete().in("carpool_id", driverCarpoolIds);
     await supabase.from("carpools").delete().in("id", driverCarpoolIds);
   }
