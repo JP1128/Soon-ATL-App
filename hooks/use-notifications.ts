@@ -45,23 +45,19 @@ export function useNotifications(): UseNotificationsReturn {
 
     setPermission(Notification.permission as NotificationPermission);
 
-    navigator.serviceWorker.ready
+    // Register SW first, then check subscription status
+    navigator.serviceWorker
+      .register("/sw.js")
       .then((registration) => registration.pushManager.getSubscription())
       .then((subscription) => {
         setIsSubscribed(subscription !== null);
       })
+      .catch((error) => {
+        console.error("Service worker registration failed:", error);
+      })
       .finally(() => {
         setIsLoading(false);
       });
-  }, [isSupported]);
-
-  // Register service worker on mount
-  useEffect(() => {
-    if (!isSupported) return;
-
-    navigator.serviceWorker.register("/sw.js").catch((error) => {
-      console.error("Service worker registration failed:", error);
-    });
   }, [isSupported]);
 
   const subscribe = useCallback(async (): Promise<void> => {
@@ -76,7 +72,29 @@ export function useNotifications(): UseNotificationsReturn {
         return;
       }
 
-      const registration = await navigator.serviceWorker.ready;
+      // Ensure SW is registered and active before subscribing
+      const registration = await navigator.serviceWorker.register("/sw.js");
+
+      // Wait for the SW to be active
+      if (registration.installing || registration.waiting) {
+        await new Promise<void>((resolve) => {
+          const sw = registration.installing || registration.waiting;
+          if (!sw) {
+            resolve();
+            return;
+          }
+          sw.addEventListener("statechange", () => {
+            if (sw.state === "activated") {
+              resolve();
+            }
+          });
+          // Resolve immediately if already activated
+          if (sw.state === "activated") {
+            resolve();
+          }
+        });
+      }
+
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(
@@ -97,6 +115,8 @@ export function useNotifications(): UseNotificationsReturn {
 
       if (response.ok) {
         setIsSubscribed(true);
+      } else {
+        console.error("Subscribe API failed:", await response.text());
       }
     } catch (error) {
       console.error("Failed to subscribe:", error);

@@ -7,8 +7,20 @@ export function NotificationPrompt(): React.ReactElement | null {
   const { permission, isSubscribed, isSupported, isLoading, subscribe, unsubscribe } =
     useNotifications();
 
-  if (!isSupported) return null;
   if (isLoading) return null;
+
+  // Browser doesn't support push notifications
+  if (!isSupported) {
+    return (
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <p className="text-sm font-medium">Notifications not supported</p>
+        <p className="text-xs text-muted-foreground">
+          Your browser doesn&apos;t support push notifications. On iOS, add this
+          app to your Home Screen to enable them.
+        </p>
+      </div>
+    );
+  }
 
   // Already subscribed — show option to turn off
   if (isSubscribed) {
