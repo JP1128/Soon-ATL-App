@@ -45,6 +45,10 @@ export default async function HomePage(): Promise<React.ReactElement> {
   let afterAssignedDriver: { full_name: string; avatar_url: string | null; pickup_lat: number | null; pickup_lng: number | null } | null = null;
   let beforeCarpoolId: string | null = null;
   let afterCarpoolId: string | null = null;
+  let beforePickupOrderSentAt: string | null = null;
+  let afterPickupOrderSentAt: string | null = null;
+  let beforePickupOrderSentRiders: string[] = [];
+  let afterPickupOrderSentRiders: string[] = [];
   if (user && activeEvent) {
     const { data: response } = await supabase
       .from("responses")
@@ -132,12 +136,24 @@ export default async function HomePage(): Promise<React.ReactElement> {
               .sort((a, b) => a.pickup_order - b.pickup_order)
               .map((r) => r.rider_id);
             const riders = await resolveRiders(riderIds);
+
+            // Fetch pickup order sent state
+            const { data: carpoolSentData } = await supabase
+              .from("carpools")
+              .select("pickup_order_sent_at, pickup_order_sent_riders")
+              .eq("id", driverEntry.id)
+              .single() as { data: { pickup_order_sent_at: string | null; pickup_order_sent_riders: string[] | null } | null };
+
             if (legKey === "before") {
               beforeCarpoolId = driverEntry.id;
               beforeAssignedRiders = riders;
+              beforePickupOrderSentAt = carpoolSentData?.pickup_order_sent_at ?? null;
+              beforePickupOrderSentRiders = carpoolSentData?.pickup_order_sent_riders ?? [];
             } else {
               afterCarpoolId = driverEntry.id;
               afterAssignedRiders = riders;
+              afterPickupOrderSentAt = carpoolSentData?.pickup_order_sent_at ?? null;
+              afterPickupOrderSentRiders = carpoolSentData?.pickup_order_sent_riders ?? [];
             }
           } else {
             // Check if user is a rider in this leg
@@ -201,6 +217,10 @@ export default async function HomePage(): Promise<React.ReactElement> {
             afterAssignedDriver={afterAssignedDriver}
             beforeCarpoolId={beforeCarpoolId}
             afterCarpoolId={afterCarpoolId}
+            beforePickupOrderSentAt={beforePickupOrderSentAt}
+            afterPickupOrderSentAt={afterPickupOrderSentAt}
+            beforePickupOrderSentRiders={beforePickupOrderSentRiders}
+            afterPickupOrderSentRiders={afterPickupOrderSentRiders}
             carpoolsSentAt={activeEvent.carpools_sent_at}
             pickupLat={userResponse.pickup_lat}
             pickupLng={userResponse.pickup_lng}

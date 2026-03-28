@@ -7,6 +7,7 @@ import { Avatar, AvatarImage, AvatarFallback, AvatarGroup } from "@/components/u
 import { AnimatedIconBlock } from "@/components/ui/animated-icon-block";
 import { ResponseOptionsMenu } from "@/components/response-options-menu";
 import { CarpoolDetailView } from "@/components/carpool-detail-view";
+import { RoleEditOverlay } from "@/components/role-edit-overlay";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Car01Icon, LocationUser01Icon, Coffee01Icon, Edit02Icon, MapsSearchIcon, Clock01Icon, SeatSelectorIcon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { formatDisplayAddress } from "@/lib/utils";
@@ -52,6 +53,10 @@ interface SubmittedEventCardProps {
   afterAssignedDriver: AssignedDriver | null;
   beforeCarpoolId: string | null;
   afterCarpoolId: string | null;
+  beforePickupOrderSentAt: string | null;
+  afterPickupOrderSentAt: string | null;
+  beforePickupOrderSentRiders: string[];
+  afterPickupOrderSentRiders: string[];
   carpoolsSentAt: string | null;
   pickupLat: number | null;
   pickupLng: number | null;
@@ -103,6 +108,10 @@ export function SubmittedEventCard({
   afterAssignedDriver,
   beforeCarpoolId,
   afterCarpoolId,
+  beforePickupOrderSentAt,
+  afterPickupOrderSentAt,
+  beforePickupOrderSentRiders,
+  afterPickupOrderSentRiders,
   carpoolsSentAt,
   pickupLat,
   pickupLng,
@@ -111,35 +120,33 @@ export function SubmittedEventCard({
 }: SubmittedEventCardProps): React.ReactElement {
   const [view, setView] = useState<"main" | "detail">("main");
   const [activeLeg, setActiveLeg] = useState<"before" | "after">("before");
+  const [editLeg, setEditLeg] = useState<"before" | "after" | null>(null);
   const [lockedHeight, setLockedHeight] = useState<number | undefined>(undefined);
   const mainRef = useRef<HTMLDivElement>(null);
 
-  // Driver indicator: show dot when assigned riders haven't been sent pickup order (per-leg)
-  const beforeSentKey = beforeCarpoolId ? `carpool-order-sent-${beforeCarpoolId}` : null;
-  const afterSentKey = afterCarpoolId ? `carpool-order-sent-${afterCarpoolId}` : null;
-  const hasUnsentBeforeRiders = (() => {
-    if (!beforeSentKey || beforeAssignedRiders.length === 0) return false;
-    const raw = localStorage.getItem(beforeSentKey);
-    if (!raw) return true;
-    try {
-      const sentIds = JSON.parse(raw) as string[];
-      const sentSet = new Set(sentIds);
-      return beforeAssignedRiders.some((r) => !sentSet.has(r.id));
-    } catch {
-      return true;
-    }
+  // Local state for sent riders and current rider order (updated when driver sends from detail view)
+  const [beforeSentRecently, setBeforeSentRecently] = useState(false);
+  const [afterSentRecently, setAfterSentRecently] = useState(false);
+
+  const handleSent = useCallback((leg: "before" | "after"): void => {
+    if (leg === "before") setBeforeSentRecently(true);
+    else setAfterSentRecently(true);
+  }, []);
+
+  // Driver indicator: show dot when riders haven't been sent pickup order or order has changed
+  const hasUnsentBeforeRiders = !beforeSentRecently && (() => {
+    if (beforeAssignedRiders.length === 0) return false;
+    if (beforePickupOrderSentRiders.length === 0) return true;
+    const currentIds = beforeAssignedRiders.map((r) => r.id);
+    if (currentIds.length !== beforePickupOrderSentRiders.length) return true;
+    return currentIds.some((id, i) => id !== beforePickupOrderSentRiders[i]);
   })();
-  const hasUnsentAfterRiders = (() => {
-    if (!afterSentKey || afterAssignedRiders.length === 0) return false;
-    const raw = localStorage.getItem(afterSentKey);
-    if (!raw) return true;
-    try {
-      const sentIds = JSON.parse(raw) as string[];
-      const sentSet = new Set(sentIds);
-      return afterAssignedRiders.some((r) => !sentSet.has(r.id));
-    } catch {
-      return true;
-    }
+  const hasUnsentAfterRiders = !afterSentRecently && (() => {
+    if (afterAssignedRiders.length === 0) return false;
+    if (afterPickupOrderSentRiders.length === 0) return true;
+    const currentIds = afterAssignedRiders.map((r) => r.id);
+    if (currentIds.length !== afterPickupOrderSentRiders.length) return true;
+    return currentIds.some((id, i) => id !== afterPickupOrderSentRiders[i]);
   })();
 
   // Rider indicator: show dot when assigned a driver the rider hasn't seen yet (per-leg)
@@ -272,7 +279,7 @@ export function SubmittedEventCard({
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Before {title}
             </p>
-            <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs text-muted-foreground">
+            <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs text-muted-foreground" onClick={() => setEditLeg("before")}>
               <HugeiconsIcon icon={Edit02Icon} className="size-3.5" strokeWidth={1.5} />
               Edit
             </Button>
@@ -390,7 +397,7 @@ export function SubmittedEventCard({
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               After {title}
             </p>
-            <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs text-muted-foreground">
+            <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs text-muted-foreground" onClick={() => setEditLeg("after")}>
               <HugeiconsIcon icon={Edit02Icon} className="size-3.5" strokeWidth={1.5} />
               Edit
             </Button>
@@ -517,7 +524,10 @@ export function SubmittedEventCard({
               returnLng={returnLng}
               carpoolId={activeLeg === "before" ? beforeCarpoolId : afterCarpoolId}
               carpoolsSentAt={carpoolsSentAt}
+              pickupOrderSentAt={activeLeg === "before" ? beforePickupOrderSentAt : afterPickupOrderSentAt}
+              pickupOrderSentRiders={activeLeg === "before" ? beforePickupOrderSentRiders : afterPickupOrderSentRiders}
               onBack={showMain}
+              onSent={() => handleSent(activeLeg)}
             />
         </div>
       </motion.div>
@@ -539,6 +549,21 @@ export function SubmittedEventCard({
         </svg>
         <div className="h-1 bg-foreground" />
       </div>
+
+      <RoleEditOverlay
+        open={editLeg !== null}
+        onClose={() => setEditLeg(null)}
+        leg={editLeg ?? "before"}
+        eventId={eventId}
+        eventTitle={title}
+        currentRole={editLeg === "before" ? beforeRole : afterRole}
+        currentAddress={editLeg === "before" ? pickupAddress : returnAddress}
+        currentLat={editLeg === "before" ? pickupLat : returnLat}
+        currentLng={editLeg === "before" ? pickupLng : returnLng}
+        currentDepartureTime={departureTime}
+        currentAvailableSeats={availableSeats}
+        currentNote={null}
+      />
     </div>
   );
 }

@@ -77,5 +77,15 @@ export async function PATCH(request: Request): Promise<NextResponse> {
       .eq("id", carpool.event_id);
   }
 
-  return NextResponse.json({ success: true });
+  // Record sent state on the carpool
+  const now = new Date().toISOString();
+  await supabase
+    .from("carpools")
+    .update({
+      pickup_order_sent_at: now,
+      pickup_order_sent_riders: riderOrder,
+    })
+    .eq("id", carpoolId);
+
+  return NextResponse.json({ success: true, pickup_order_sent_at: now, pickup_order_sent_riders: riderOrder });
 }

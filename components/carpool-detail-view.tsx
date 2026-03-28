@@ -68,7 +68,10 @@ interface CarpoolDetailViewProps {
   returnLng: number | null;
   carpoolId: string | null;
   carpoolsSentAt: string | null;
+  pickupOrderSentAt: string | null;
+  pickupOrderSentRiders: string[];
   onBack: () => void;
+  onSent?: (sentRiders: string[]) => void;
 }
 
 /* ── Map styles ────────────────────────────────────────────────── */
@@ -208,12 +211,12 @@ function SortableRiderItem({
   rider,
   index,
   leg,
-  isUnsent,
+  isChanged,
 }: {
   rider: RiderData;
   index: number;
   leg: "before" | "after";
-  isUnsent: boolean;
+  isChanged: boolean;
 }): React.ReactElement {
   const {
     attributes,
@@ -251,7 +254,7 @@ function SortableRiderItem({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <p className="text-sm font-medium leading-tight">{rider.full_name}</p>
-          {isUnsent && <span className="size-1.5 rounded-full bg-foreground shrink-0" />}
+          {isChanged && <span className="size-1.5 rounded-full bg-foreground shrink-0" />}
         </div>
         {rider.phone_number && (
           <p className="text-[11px] text-muted-foreground">
@@ -290,7 +293,10 @@ export function CarpoolDetailView({
   returnLng,
   carpoolId,
   carpoolsSentAt,
+  pickupOrderSentAt: initialPickupOrderSentAt,
+  pickupOrderSentRiders: initialPickupOrderSentRiders,
   onBack,
+  onSent,
 }: CarpoolDetailViewProps): React.ReactElement {
   const { isLoaded: mapsLoaded } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
@@ -302,31 +308,32 @@ export function CarpoolDetailView({
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
   const [eventCoords, setEventCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [saving, setSaving] = useState(false);
-  const savedOrderRef = useRef((initialRiders ?? []).map((r) => r.id));
+  const [savedOrder, setSavedOrder] = useState(() => (initialRiders ?? []).map((r) => r.id));
   const orderChanged = useMemo(() => {
     const currentIds = riders.map((r) => r.id);
-    return currentIds.some((id, i) => id !== savedOrderRef.current[i]);
-  }, [riders]);
-  const sentKey = carpoolId ? `carpool-order-sent-${carpoolId}` : null;
-  const sentRiderIds = useMemo(() => {
-    if (!sentKey) return new Set<string>();
-    const raw = localStorage.getItem(sentKey);
-    if (!raw) return new Set<string>();
-    try {
-      return new Set<string>(JSON.parse(raw) as string[]);
-    } catch {
-      return new Set<string>();
-    }
-  }, [sentKey]);
-  const [sentRiders, setSentRiders] = useState(sentRiderIds);
-  const unsentRiderIds = useMemo(() => {
-    const unsent = new Set<string>();
-    for (const r of riders) {
-      if (!sentRiders.has(r.id)) unsent.add(r.id);
-    }
-    return unsent;
+    return currentIds.some((id, i) => id !== savedOrder[i]);
+  }, [riders, savedOrder]);
+  const [sentRiders, setSentRiders] = useState(new Set<string>(initialPickupOrderSentRiders));
+  const [lastSentAt, setLastSentAt] = useState<string | null>(initialPickupOrderSentAt);
+  const hasNewOrRemovedRiders = useMemo(() => {
+    const currentIds = riders.map((r) => r.id);
+    if (currentIds.length !== sentRiders.size) return true;
+    return currentIds.some((id) => !sentRiders.has(id));
   }, [riders, sentRiders]);
-  const needsSend = orderChanged || unsentRiderIds.size > 0;
+  const changedRiderIds = useMemo(() => {
+    // If riders were added or removed, mark ALL riders as changed
+    if (hasNewOrRemovedRiders) {
+      return new Set(riders.map((r) => r.id));
+    }
+    // Otherwise, only mark riders whose position changed
+    const changed = new Set<string>();
+    const saved = savedOrder;
+    riders.forEach((r, i) => {
+      if (saved[i] !== r.id) changed.add(r.id);
+    });
+    return changed;
+  }, [riders, hasNewOrRemovedRiders, savedOrder]);
+  const needsSend = orderChanged || hasNewOrRemovedRiders;
   const [routeInfo, setRouteInfo] = useState<{ distanceMiles: number; durationMin: number } | null>(null);
   const [routeLoading, setRouteLoading] = useState(false);
   const markersRef = useRef<google.maps.Marker[]>([]);
@@ -582,13 +589,16 @@ export function CarpoolDetailView({
           riderOrder: riders.map((r) => r.id),
         }),
       });
-      if (!res.ok) throw new Error("Failed to save order");
-      savedOrderRef.current = riders.map((r) => r.id);
-      if (sentKey) {
-        const riderIds = riders.map((r) => r.id);
-        localStorage.setItem(sentKey, JSON.stringify(riderIds));
-        setSentRiders(new Set(riderIds));
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.error("Failed to save pickup order:", res.status, data);
+        return;
       }
+      const result = await res.json() as { pickup_order_sent_at: string; pickup_order_sent_riders: string[] };
+      setSavedOrder(riders.map((r) => r.id));
+      setSentRiders(new Set(result.pickup_order_sent_riders));
+      setLastSentAt(result.pickup_order_sent_at);
+      onSent?.(result.pickup_order_sent_riders);
     } catch (err) {
       console.error("Failed to save pickup order:", err);
     } finally {
@@ -597,7 +607,7 @@ export function CarpoolDetailView({
   };
 
   const handleRevert = (): void => {
-    const original = savedOrderRef.current;
+    const original = savedOrder;
     const reordered = original.map((id) => riders.find((r) => r.id === id)).filter((r): r is RiderData => !!r);
     setRiders(reordered);
   };
@@ -682,7 +692,7 @@ export function CarpoolDetailView({
               </button>
             )}
           </div>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <DndContext id="carpool-rider-dnd" sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={riders.map((r) => r.id)} strategy={verticalListSortingStrategy}>
               <div className="space-y-1">
                 {riders.map((rider, i) => (
@@ -691,7 +701,7 @@ export function CarpoolDetailView({
                     rider={rider}
                     index={i}
                     leg={leg}
-                    isUnsent={unsentRiderIds.has(rider.id)}
+                    isChanged={changedRiderIds.has(rider.id)}
                   />
                 ))}
               </div>
@@ -719,9 +729,10 @@ export function CarpoolDetailView({
       {/* Send button (drivers only) */}
       {isDriver && riders.length > 0 && (
         <div className="mt-auto px-5 pb-5 pt-3">
-          {sentRiders.size > 0 && !needsSend && (
+          {lastSentAt && (
             <p className="mb-2 text-center text-[11px] text-muted-foreground">
-              Pickup order sent
+              Last confirmed {new Date(lastSentAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}{" "}
+              at {new Date(lastSentAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
             </p>
           )}
           <Button
@@ -734,7 +745,7 @@ export function CarpoolDetailView({
               className="size-4 mr-1.5"
               strokeWidth={1.5}
             />
-            {saving ? "Saving…" : needsSend ? (sentRiders.size > 0 ? "Send Update" : "Send") : "Sent"}
+            {saving ? "Confirming…" : needsSend ? (sentRiders.size > 0 ? "Confirm Update" : "Confirm") : "Confirmed"}
           </Button>
         </div>
       )}
