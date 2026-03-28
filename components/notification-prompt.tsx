@@ -7,8 +7,6 @@ export function NotificationPrompt(): React.ReactElement | null {
   const { permission, isSubscribed, isSupported, isLoading, subscribe, unsubscribe } =
     useNotifications();
 
-  if (isLoading) return null;
-
   // Browser doesn't support push notifications
   if (!isSupported) {
     return (

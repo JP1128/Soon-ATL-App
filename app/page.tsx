@@ -165,7 +165,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
   const hasSubmitted = userStatus === "submitted" || userStatus === "ride-assigned";
 
   return (
-    <div className={`flex w-full max-w-lg flex-col items-center px-6 ${hasSubmitted ? "flex-1 pt-6 pb-4" : "flex-1 justify-center"}`}>
+    <div className={`flex w-full max-w-lg flex-col items-center px-6 ${hasSubmitted ? "flex-1 min-h-0 pt-6 pb-4" : "flex-1 justify-center"}`}>
       {/* Brand — hidden after submission */}
       {!hasSubmitted && (
         <>
@@ -179,7 +179,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
       )}
 
       {/* Main content area */}
-      <div className={`${hasSubmitted ? "flex-1" : "mt-6 tall:mt-8 xtall:mt-10"} flex w-full flex-col items-center gap-4`}>
+      <div className={`${hasSubmitted ? "flex-1 min-h-0" : "mt-6 tall:mt-8 xtall:mt-10"} flex w-full flex-col items-center gap-4`}>
         {!user && <LoginButton />}
         {user && activeEvent && hasSubmitted && userResponse && (
           <SubmittedEventCard

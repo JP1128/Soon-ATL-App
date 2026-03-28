@@ -123,6 +123,7 @@ export function SubmittedEventCard({
   const afterSentKey = afterCarpoolId ? `carpool-order-sent-${afterCarpoolId}` : null;
   const hasUnsentBeforeRiders = (() => {
     if (!beforeSentKey || beforeAssignedRiders.length === 0) return false;
+    if (typeof window === "undefined") return false;
     const raw = localStorage.getItem(beforeSentKey);
     if (!raw) return true;
     try {
@@ -135,6 +136,7 @@ export function SubmittedEventCard({
   })();
   const hasUnsentAfterRiders = (() => {
     if (!afterSentKey || afterAssignedRiders.length === 0) return false;
+    if (typeof window === "undefined") return false;
     const raw = localStorage.getItem(afterSentKey);
     if (!raw) return true;
     try {
@@ -151,11 +153,13 @@ export function SubmittedEventCard({
   const afterRiderSeenKey = `rider-driver-seen-after-${responseId}`;
   const [hasUnseenBeforeDriver, setHasUnseenBeforeDriver] = useState(() => {
     if (!beforeAssignedDriver) return false;
+    if (typeof window === "undefined") return false;
     const seen = localStorage.getItem(beforeRiderSeenKey);
     return seen !== beforeAssignedDriver.full_name;
   });
   const [hasUnseenAfterDriver, setHasUnseenAfterDriver] = useState(() => {
     if (!afterAssignedDriver) return false;
+    if (typeof window === "undefined") return false;
     const seen = localStorage.getItem(afterRiderSeenKey);
     return seen !== afterAssignedDriver.full_name;
   });
