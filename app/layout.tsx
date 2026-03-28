@@ -21,6 +21,8 @@ export const metadata: Metadata = {
   title: "Soon ATL",
   description:
     "Soon ATL is work in progress. Ask JP for access or more information.",
+  manifest: "/manifest.json",
+  themeColor: "#000000",
 };
 
 export default function RootLayout({

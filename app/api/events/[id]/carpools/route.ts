@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import {
+  sendPushToMany,
+  type PushSubscriptionRecord,
+} from "@/lib/notifications/push";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -292,6 +296,41 @@ export async function PATCH(
       { error: "Failed to send carpool assignments" },
       { status: 500 }
     );
+  }
+
+  // Send push notifications to all participants in this event
+  const participantIds = new Set<string>();
+  for (const carpool of carpools ?? []) {
+    participantIds.add(carpool.driver_id);
+    for (const rider of carpool.carpool_riders ?? []) {
+      participantIds.add(rider.rider_id);
+    }
+  }
+
+  if (participantIds.size > 0) {
+    const { data: subscriptions } = (await supabase
+      .from("push_subscriptions")
+      .select("endpoint, keys_p256dh, keys_auth")
+      .in("user_id", Array.from(participantIds))) as {
+      data: PushSubscriptionRecord[] | null;
+    };
+
+    if (subscriptions && subscriptions.length > 0) {
+      const result = await sendPushToMany(subscriptions, {
+        title: "Carpool assignments are out!",
+        body: "Check the app to see your carpool details.",
+        url: "/",
+        tag: `carpools-${eventId}`,
+      });
+
+      // Clean up expired subscriptions
+      if (result.expired.length > 0) {
+        await supabase
+          .from("push_subscriptions")
+          .delete()
+          .in("endpoint", result.expired);
+      }
+    }
   }
 
   return NextResponse.json({ success: true, carpools_sent_at: data.carpools_sent_at });

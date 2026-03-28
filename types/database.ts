@@ -88,3 +88,12 @@ export interface CarpoolRider {
   rider_id: string;
   pickup_order: number;
 }
+
+export interface PushSubscription {
+  id: string;
+  user_id: string;
+  endpoint: string;
+  keys_p256dh: string;
+  keys_auth: string;
+  created_at: string;
+}
