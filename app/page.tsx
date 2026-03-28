@@ -69,19 +69,19 @@ export default async function HomePage(): Promise<React.ReactElement> {
           .from("carpool_riders")
           .select("rider_id, pickup_order")
           .eq("carpool_id", driverCarpool.id)
-          .order("pickup_order", { ascending: true });
+          .order("pickup_order", { ascending: true }) as { data: { rider_id: string; pickup_order: number }[] | null };
 
         if (riders && riders.length > 0) {
-          const riderIds = riders.map((r) => r.rider_id);
+          const riderIds = riders.map((r: { rider_id: string }) => r.rider_id);
           const { data: profiles } = await supabase
             .from("profiles")
             .select("id, full_name, avatar_url")
-            .in("id", riderIds);
+            .in("id", riderIds) as { data: { id: string; full_name: string; avatar_url: string | null }[] | null };
 
           if (profiles) {
             // Maintain pickup order
             assignedRiders = riderIds
-              .map((id) => profiles.find((p) => p.id === id))
+              .map((id: string) => profiles.find((p) => p.id === id))
               .filter((p): p is { id: string; full_name: string; avatar_url: string | null } => !!p)
               .map((p) => ({ full_name: p.full_name, avatar_url: p.avatar_url }));
           }
