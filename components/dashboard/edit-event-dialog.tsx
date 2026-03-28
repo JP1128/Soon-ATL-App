@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { triggerFluidWave, dismissFluidWave } from "@/components/ui/fluid-wave-loader";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { MapsSearchIcon, TextIcon } from "@hugeicons/core-free-icons";
 import type { Event } from "@/types/database";
@@ -152,6 +153,7 @@ export function EditEventDialog({ event, open, onOpenChange }: EditEventDialogPr
     if (!canAdvance()) return;
     setIsSubmitting(true);
     setError(null);
+    triggerFluidWave();
 
     const res = await fetch(`/api/events/${event.id}`, {
       method: "PATCH",
@@ -168,10 +170,12 @@ export function EditEventDialog({ event, open, onOpenChange }: EditEventDialogPr
       const data = await res.json();
       setError(data.error || "Failed to update event");
       setIsSubmitting(false);
+      dismissFluidWave();
       return;
     }
 
     setIsSubmitting(false);
+    dismissFluidWave();
     onOpenChange(false);
     router.refresh();
   }

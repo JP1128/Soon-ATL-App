@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { motion, AnimatePresence } from "motion/react";
+import { triggerFluidWave } from "@/components/ui/fluid-wave-loader";
 
 type UserEventStatus = "needs-response" | "submitted" | "ride-assigned";
 
@@ -76,6 +76,7 @@ export function ActiveEventCard({
     }
 
     setIsPressed(true);
+    triggerFluidWave();
     setTimeout(() => {
       router.push(`/event/${eventId}`);
     }, 500);
@@ -142,29 +143,6 @@ export function ActiveEventCard({
         </div>
       </div>
     </button>
-
-      {/* Loading indicator */}
-      <AnimatePresence>
-        {isPressed && (
-          <motion.div
-            initial={{ opacity: 0, scaleX: 0.3 }}
-            animate={{ opacity: 1, scaleX: 1 }}
-            transition={{ delay: 0.5, duration: 0.4, ease: "easeOut" }}
-            className="absolute left-1/2 -translate-x-1/2 top-[calc(100%+20px)] h-[3px] w-16 origin-center overflow-hidden rounded-full bg-foreground/10"
-          >
-            <motion.div
-              className="h-full w-1/2 rounded-full bg-foreground/40"
-              animate={{ x: ["-100%", "200%"] }}
-              transition={{
-                duration: 1,
-                repeat: Infinity,
-                ease: "easeInOut",
-                delay: 0.5,
-              }}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

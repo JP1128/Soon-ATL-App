@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { triggerFluidWave, dismissFluidWave } from "@/components/ui/fluid-wave-loader";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { MapsSearchIcon, TextIcon } from "@hugeicons/core-free-icons";
 
@@ -138,6 +139,7 @@ export function CreateEventDialog({ open, onOpenChange }: CreateEventDialogProps
     if (!canAdvance()) return;
     setIsSubmitting(true);
     setError(null);
+    triggerFluidWave();
 
     const res = await fetch("/api/events", {
       method: "POST",
@@ -154,10 +156,12 @@ export function CreateEventDialog({ open, onOpenChange }: CreateEventDialogProps
       const data = await res.json();
       setError(data.error || "Failed to create event");
       setIsSubmitting(false);
+      dismissFluidWave();
       return;
     }
 
     setIsSubmitting(false);
+    dismissFluidWave();
     onOpenChange(false);
     router.refresh();
   }

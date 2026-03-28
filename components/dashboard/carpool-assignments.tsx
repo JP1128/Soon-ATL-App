@@ -12,6 +12,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowDown01Icon, Car01Icon, SteeringIcon, UserGroupIcon, UserAdd01Icon, UserRemove01Icon, SentIcon, MapsSearchIcon, TextIcon, Clock01Icon, AlertCircleIcon, Navigation03Icon } from "@hugeicons/core-free-icons";
 import { cn, formatPhoneNumber } from "@/lib/utils";
+import { triggerFluidWave, dismissFluidWave } from "@/components/ui/fluid-wave-loader";
 import { Button } from "@/components/ui/button";
 
 /* ── Haversine + route helpers (module-level, no hooks) ────── */
@@ -687,6 +688,7 @@ export function CarpoolAssignments({
 
   async function handleSend(): Promise<void> {
     setSending(true);
+    triggerFluidWave();
     try {
       const res = await fetch(`/api/events/${eventId}/carpools`, {
         method: "PATCH",
@@ -699,6 +701,7 @@ export function CarpoolAssignments({
       // silently fail
     } finally {
       setSending(false);
+      dismissFluidWave();
       setShowSendConfirm(false);
     }
   }

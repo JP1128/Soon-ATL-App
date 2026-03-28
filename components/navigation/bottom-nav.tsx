@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowLeftIcon, Menu01Icon, Home01Icon } from "@hugeicons/core-free-icons";
+import { triggerFluidWave } from "@/components/ui/fluid-wave-loader";
 
 interface BottomNavProps {
   fullName: string;
@@ -117,14 +118,14 @@ export function BottomNav({
             <span className="sr-only">Open menu</span>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="top" align="start" sideOffset={8}>
-            <DropdownMenuItem render={<Link href="/" />}>
+            <DropdownMenuItem render={<Link href="/" />} onClick={triggerFluidWave}>
               Home
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem render={<Link href="/dashboard" />}>
+            <DropdownMenuItem render={<Link href="/dashboard" />} onClick={triggerFluidWave}>
               Manage Event
             </DropdownMenuItem>
-            <DropdownMenuItem render={<Link href="/dashboard/past-events" />}>
+            <DropdownMenuItem render={<Link href="/dashboard/past-events" />} onClick={triggerFluidWave}>
               Past Events
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -134,7 +135,7 @@ export function BottomNav({
           variant="outline"
           size="icon"
           className="size-10 rounded-full bg-background shadow-lg"
-          onClick={() => showHomeIcon ? router.push("/") : router.back()}
+          onClick={() => { triggerFluidWave(); showHomeIcon ? router.push("/") : router.back(); }}
         >
           <AnimatePresence mode="wait">
             <motion.span
@@ -157,6 +158,7 @@ export function BottomNav({
         <Link
           ref={chipRef}
           href="/profile"
+          onClick={triggerFluidWave}
           className={`relative inline-flex items-center gap-2.5 rounded-full border border-border/50 bg-background px-4 py-2 text-sm shadow-lg transition-all duration-200 hover:bg-muted active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isNavigating ? "scale-95" : "scale-100"} ${isShaking ? "animate-[shake_0.5s_ease-in-out]" : ""}`}
         >
           {!hasPhoneNumber && (

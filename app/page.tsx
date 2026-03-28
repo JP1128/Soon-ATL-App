@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { formatDisplayAddress } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { LoginButton } from "@/components/login-button";
 import { ActiveEventCard } from "@/components/active-event-card";
 import type { Event, Profile, Response, Carpool, CarpoolRider } from "@/types/database";
 
@@ -95,11 +95,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
 
       {/* Main content area */}
       <div className="mt-6 tall:mt-8 xtall:mt-10 flex w-full flex-col items-center gap-4">
-        {!user && (
-          <a href="/api/auth/google">
-            <Button size="lg" className="rounded-full px-8">Login</Button>
-          </a>
-        )}
+        {!user && <LoginButton />}
         {user && activeEvent && (
           <ActiveEventCard
             eventId={activeEvent.id}

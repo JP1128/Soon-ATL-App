@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { triggerFluidWave, dismissFluidWave } from "@/components/ui/fluid-wave-loader";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TimeWheelPicker } from "@/components/ui/time-wheel-picker";
@@ -110,6 +111,7 @@ export function DraftEventEditor({ event, stats }: DraftEventEditorProps): React
   async function handleSave(): Promise<void> {
     setIsSaving(true);
     setError(null);
+    triggerFluidWave();
 
     const res = await fetch(`/api/events/${event.id}`, {
       method: "PATCH",
@@ -121,11 +123,13 @@ export function DraftEventEditor({ event, stats }: DraftEventEditorProps): React
       const data = await res.json();
       setError(data.error || "Failed to save");
       setIsSaving(false);
+      dismissFluidWave();
       return;
     }
 
     setLastSaved(new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }));
     setIsSaving(false);
+    dismissFluidWave();
     router.refresh();
   }
 
@@ -137,6 +141,7 @@ export function DraftEventEditor({ event, stats }: DraftEventEditorProps): React
 
     setIsActivating(true);
     setError(null);
+    triggerFluidWave();
 
     // Save and send out
     const saveRes = await fetch(`/api/events/${event.id}`, {
@@ -149,9 +154,11 @@ export function DraftEventEditor({ event, stats }: DraftEventEditorProps): React
       const data = await saveRes.json();
       setError(data.error || "Failed to send out");
       setIsActivating(false);
+      dismissFluidWave();
       return;
     }
 
+    dismissFluidWave();
     router.refresh();
   }
 
@@ -198,7 +205,7 @@ export function DraftEventEditor({ event, stats }: DraftEventEditorProps): React
                 variant="outline"
                 className="w-full rounded-xl"
                 disabled={!stats || stats.total === 0}
-                onClick={() => router.push(`/dashboard/events/${event.id}/carpools`)}
+                onClick={() => { triggerFluidWave(); router.push(`/dashboard/events/${event.id}/carpools`); }}
               >
                 <HugeiconsIcon icon={Car01Icon} className="size-4" />
                 Carpool Assignment

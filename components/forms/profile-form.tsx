@@ -9,6 +9,7 @@ import { TextInputOverlay } from "@/components/ui/text-input-overlay";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Logout01Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion } from "motion/react";
+import { triggerFluidWave, dismissFluidWave } from "@/components/ui/fluid-wave-loader";
 import { createClient } from "@/lib/supabase/client";
 import { formatPhoneNumber } from "@/lib/utils";
 import type { Profile } from "@/types/database";
@@ -56,6 +57,7 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
     setIsSaving(true);
     setError(null);
     setSaved(false);
+    triggerFluidWave();
 
     const res = await fetch("/api/profile", {
       method: "PATCH",
@@ -70,11 +72,13 @@ export function ProfileForm({ profile }: ProfileFormProps): React.ReactElement {
       const data = await res.json();
       setError(data.error || "Failed to update profile");
       setIsSaving(false);
+      dismissFluidWave();
       return;
     }
 
     setSaved(true);
     setIsSaving(false);
+    dismissFluidWave();
     router.refresh();
     setTimeout(() => setSaved(false), 2000);
   }

@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { Event, EventStatus } from "@/types/database";
+import { triggerFluidWave } from "@/components/ui/fluid-wave-loader";
 
 interface EventCardProps {
   event: Event;
@@ -137,7 +138,7 @@ export function EventCard({ event, responseCount, isActive }: EventCardProps): R
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem
-                onClick={() => router.push(`/dashboard/events/${event.id}`)}
+                onClick={() => { triggerFluidWave(); router.push(`/dashboard/events/${event.id}`); }}
               >
                 View details
               </DropdownMenuItem>

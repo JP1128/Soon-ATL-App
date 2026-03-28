@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Figtree } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { BottomNavServer } from "@/components/navigation/bottom-nav-server";
+import { FluidWaveLoader } from "@/components/ui/fluid-wave-loader";
 
 const figtree = Figtree({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -48,6 +49,7 @@ export default function RootLayout({
           }}
         >{children}</main>
         <BottomNavServer />
+        <FluidWaveLoader />
       </body>
     </html>
   );

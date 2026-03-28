@@ -18,6 +18,7 @@ import {
   MapsSearchIcon,
   TextIcon,
 } from "@hugeicons/core-free-icons";
+import { triggerFluidWave, dismissFluidWave } from "@/components/ui/fluid-wave-loader";
 import type { LegRole } from "@/types/database";
 
 interface ExistingResponse {
@@ -214,6 +215,7 @@ export function EventForm({
   async function handleSubmit(): Promise<void> {
     setIsSubmitting(true);
     setError(null);
+    triggerFluidWave();
 
     let role = "attending";
     if (beforeRole) role = beforeRole;
@@ -256,6 +258,7 @@ export function EventForm({
       setError("Something went wrong. Please try again.");
     } finally {
       setIsSubmitting(false);
+      dismissFluidWave();
     }
   }
 
