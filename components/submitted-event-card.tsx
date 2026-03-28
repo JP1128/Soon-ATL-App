@@ -7,6 +7,7 @@ import { Avatar, AvatarImage, AvatarFallback, AvatarGroup } from "@/components/u
 import { AnimatedIconBlock } from "@/components/ui/animated-icon-block";
 import { ResponseOptionsMenu } from "@/components/response-options-menu";
 import { CarpoolDetailView } from "@/components/carpool-detail-view";
+import { RoleEditOverlay } from "@/components/role-edit-overlay";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Car01Icon, LocationUser01Icon, Coffee01Icon, Edit02Icon, MapsSearchIcon, Clock01Icon, SeatSelectorIcon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { formatDisplayAddress } from "@/lib/utils";
@@ -57,6 +58,7 @@ interface SubmittedEventCardProps {
   pickupLng: number | null;
   returnLat: number | null;
   returnLng: number | null;
+  note: string | null;
 }
 
 function getDaysLeft(eventDate: string): number {
@@ -108,9 +110,11 @@ export function SubmittedEventCard({
   pickupLng,
   returnLat,
   returnLng,
+  note,
 }: SubmittedEventCardProps): React.ReactElement {
   const [view, setView] = useState<"main" | "detail">("main");
   const [activeLeg, setActiveLeg] = useState<"before" | "after">("before");
+  const [editLeg, setEditLeg] = useState<"before" | "after" | null>(null);
   const [lockedHeight, setLockedHeight] = useState<number | undefined>(undefined);
   const mainRef = useRef<HTMLDivElement>(null);
 
@@ -272,7 +276,7 @@ export function SubmittedEventCard({
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Before {title}
             </p>
-            <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs text-muted-foreground">
+            <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs text-muted-foreground" onClick={() => setEditLeg("before")}>
               <HugeiconsIcon icon={Edit02Icon} className="size-3.5" strokeWidth={1.5} />
               Edit
             </Button>
@@ -390,7 +394,7 @@ export function SubmittedEventCard({
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               After {title}
             </p>
-            <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs text-muted-foreground">
+            <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs text-muted-foreground" onClick={() => setEditLeg("after")}>
               <HugeiconsIcon icon={Edit02Icon} className="size-3.5" strokeWidth={1.5} />
               Edit
             </Button>
@@ -539,6 +543,21 @@ export function SubmittedEventCard({
         </svg>
         <div className="h-1 bg-foreground" />
       </div>
+
+      <RoleEditOverlay
+        open={editLeg !== null}
+        onClose={() => setEditLeg(null)}
+        currentRole={editLeg === "before" ? beforeRole : afterRole}
+        leg={editLeg ?? "before"}
+        eventId={eventId}
+        eventTitle={title}
+        currentAddress={editLeg === "before" ? pickupAddress : returnAddress}
+        currentLat={editLeg === "before" ? pickupLat : returnLat}
+        currentLng={editLeg === "before" ? pickupLng : returnLng}
+        currentDepartureTime={departureTime}
+        currentAvailableSeats={availableSeats}
+        currentNote={note}
+      />
     </div>
   );
 }

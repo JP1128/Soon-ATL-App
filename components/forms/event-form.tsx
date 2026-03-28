@@ -516,7 +516,7 @@ export function EventForm({
               <button
                 type="button"
                 onClick={() => setTimeOpen(true)}
-                className="flex h-9 w-full items-center rounded-4xl border border-input bg-input/30 px-3 text-base tabular-nums transition-colors hover:bg-input/50"
+                className="flex h-9 w-full items-center rounded-4xl border border-input bg-input/30 px-3 text-sm tabular-nums transition-colors hover:bg-input/50"
               >
                 {timeHour || "––"}<span className="text-muted-foreground mx-0.5">:</span>{timeMinute || "––"} {timePeriod || "PM"}
               </button>

@@ -48,10 +48,10 @@ export default async function HomePage(): Promise<React.ReactElement> {
   if (user && activeEvent) {
     const { data: response } = await supabase
       .from("responses")
-      .select("id, role, before_role, after_role, pickup_address, pickup_lat, pickup_lng, return_address, return_lat, return_lng, available_seats, departure_time")
+      .select("id, role, before_role, after_role, pickup_address, pickup_lat, pickup_lng, return_address, return_lat, return_lng, available_seats, departure_time, note")
       .eq("event_id", activeEvent.id)
       .eq("user_id", user.id)
-      .maybeSingle() as { data: Pick<Response, "id" | "role" | "before_role" | "after_role" | "pickup_address" | "pickup_lat" | "pickup_lng" | "return_address" | "return_lat" | "return_lng" | "available_seats" | "departure_time"> | null };
+      .maybeSingle() as { data: Pick<Response, "id" | "role" | "before_role" | "after_role" | "pickup_address" | "pickup_lat" | "pickup_lng" | "return_address" | "return_lat" | "return_lng" | "available_seats" | "departure_time" | "note"> | null };
     userResponse = response;
 
     if (response) {
@@ -206,6 +206,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
             pickupLng={userResponse.pickup_lng}
             returnLat={userResponse.return_lat}
             returnLng={userResponse.return_lng}
+            note={userResponse.note}
           />
         )}
         {user && activeEvent && !hasSubmitted && (
