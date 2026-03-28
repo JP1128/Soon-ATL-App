@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeftIcon, Menu01Icon, Home01Icon } from "@hugeicons/core-free-icons";
+import { ArrowLeftIcon, Menu01Icon, Home01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { triggerFluidWave } from "@/components/ui/fluid-wave-loader";
 
 interface BottomNavProps {
@@ -118,14 +118,17 @@ export function BottomNav({
             <span className="sr-only">Open menu</span>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="top" align="start" sideOffset={8}>
-            <DropdownMenuItem render={<Link href="/" />} onClick={triggerFluidWave}>
+            <DropdownMenuItem render={<Link href="/" />} onClick={pathname !== "/" ? triggerFluidWave : undefined}>
+              {pathname === "/" && <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="size-3.5 text-muted-foreground" />}
               Home
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem render={<Link href="/dashboard" />} onClick={triggerFluidWave}>
+            <DropdownMenuItem render={<Link href="/dashboard" />} onClick={pathname !== "/dashboard" ? triggerFluidWave : undefined}>
+              {pathname === "/dashboard" && <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="size-3.5 text-muted-foreground" />}
               Manage Event
             </DropdownMenuItem>
-            <DropdownMenuItem render={<Link href="/dashboard/past-events" />} onClick={triggerFluidWave}>
+            <DropdownMenuItem render={<Link href="/dashboard/past-events" />} onClick={pathname !== "/dashboard/past-events" ? triggerFluidWave : undefined}>
+              {pathname === "/dashboard/past-events" && <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="size-3.5 text-muted-foreground" />}
               Past Events
             </DropdownMenuItem>
           </DropdownMenuContent>

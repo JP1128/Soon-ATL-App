@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formatDisplayAddress } from "@/lib/utils";
 import { LoginButton } from "@/components/login-button";
 import { ActiveEventCard } from "@/components/active-event-card";
+import { SubmittedEventCard } from "@/components/submitted-event-card";
 import type { Event, Profile, Response, Carpool, CarpoolRider } from "@/types/database";
 
 type UserEventStatus = "needs-response" | "submitted" | "ride-assigned";
@@ -37,13 +38,17 @@ export default async function HomePage(): Promise<React.ReactElement> {
 
   // Determine user's status for the active event
   let userStatus: UserEventStatus = "needs-response";
+  let userResponse: Pick<Response, "id" | "role" | "before_role" | "after_role" | "pickup_address" | "return_address" | "available_seats" | "departure_time"> | null = null;
+  let assignedRiders: { full_name: string; avatar_url: string | null }[] = [];
+  let assignedDriver: { full_name: string; avatar_url: string | null } | null = null;
   if (user && activeEvent) {
     const { data: response } = await supabase
       .from("responses")
-      .select("id, role")
+      .select("id, role, before_role, after_role, pickup_address, return_address, available_seats, departure_time")
       .eq("event_id", activeEvent.id)
       .eq("user_id", user.id)
-      .maybeSingle() as { data: Pick<Response, "id" | "role"> | null };
+      .maybeSingle() as { data: Pick<Response, "id" | "role" | "before_role" | "after_role" | "pickup_address" | "return_address" | "available_seats" | "departure_time"> | null };
+    userResponse = response;
 
     if (response) {
       userStatus = "submitted";
@@ -58,6 +63,29 @@ export default async function HomePage(): Promise<React.ReactElement> {
 
       if (driverCarpool) {
         userStatus = "ride-assigned";
+
+        // Fetch assigned riders with profiles
+        const { data: riders } = await supabase
+          .from("carpool_riders")
+          .select("rider_id, pickup_order")
+          .eq("carpool_id", driverCarpool.id)
+          .order("pickup_order", { ascending: true });
+
+        if (riders && riders.length > 0) {
+          const riderIds = riders.map((r) => r.rider_id);
+          const { data: profiles } = await supabase
+            .from("profiles")
+            .select("id, full_name, avatar_url")
+            .in("id", riderIds);
+
+          if (profiles) {
+            // Maintain pickup order
+            assignedRiders = riderIds
+              .map((id) => profiles.find((p) => p.id === id))
+              .filter((p): p is { id: string; full_name: string; avatar_url: string | null } => !!p)
+              .map((p) => ({ full_name: p.full_name, avatar_url: p.avatar_url }));
+          }
+        }
       } else {
         // Check if assigned as a rider
         const { data: riderAssignment } = await supabase
@@ -67,36 +95,72 @@ export default async function HomePage(): Promise<React.ReactElement> {
           .maybeSingle() as { data: Pick<CarpoolRider, "id" | "carpool_id"> | null };
 
         if (riderAssignment) {
-          // Verify the carpool belongs to this event
+          // Verify the carpool belongs to this event and get the driver
           const { data: carpool } = await supabase
             .from("carpools")
-            .select("id")
+            .select("id, driver_id")
             .eq("id", riderAssignment.carpool_id)
             .eq("event_id", activeEvent.id)
-            .maybeSingle() as { data: Pick<Carpool, "id"> | null };
+            .maybeSingle() as { data: Pick<Carpool, "id" | "driver_id"> | null };
 
           if (carpool) {
             userStatus = "ride-assigned";
+
+            // Fetch the driver's profile
+            const { data: driverProfile } = await supabase
+              .from("profiles")
+              .select("full_name, avatar_url")
+              .eq("id", carpool.driver_id)
+              .single();
+
+            if (driverProfile) {
+              assignedDriver = driverProfile;
+            }
           }
         }
       }
     }
   }
 
+  const hasSubmitted = userStatus === "submitted" || userStatus === "ride-assigned";
+
   return (
     <div className="flex flex-1 w-full max-w-lg flex-col items-center justify-center px-6">
-      {/* Brand */}
-      <p className="text-xs font-medium tracking-[0.3em] text-muted-foreground uppercase">
-        Atlanta
-      </p>
-      <h1 className="mt-1 text-5xl font-bold tracking-tight tall:text-6xl xtall:text-7xl">
-        SOON
-      </h1>
+      {/* Brand — hidden after submission */}
+      {!hasSubmitted && (
+        <>
+          <p className="text-xs font-medium tracking-[0.3em] text-muted-foreground uppercase">
+            Atlanta
+          </p>
+          <h1 className="mt-1 text-5xl font-bold tracking-tight tall:text-6xl xtall:text-7xl">
+            SOON
+          </h1>
+        </>
+      )}
 
       {/* Main content area */}
-      <div className="mt-6 tall:mt-8 xtall:mt-10 flex w-full flex-col items-center gap-4">
+      <div className={`${hasSubmitted ? "" : "mt-6 tall:mt-8 xtall:mt-10"} flex w-full flex-col items-center gap-4`}>
         {!user && <LoginButton />}
-        {user && activeEvent && (
+        {user && activeEvent && hasSubmitted && userResponse && (
+          <SubmittedEventCard
+            responseId={userResponse.id}
+            eventId={activeEvent.id}
+            eventDate={activeEvent.event_date}
+            eventTime={activeEvent.event_time}
+            title={activeEvent.title}
+            location={activeEvent.location}
+            status={userStatus as "submitted" | "ride-assigned"}
+            beforeRole={userResponse.before_role}
+            afterRole={userResponse.after_role}
+            pickupAddress={userResponse.pickup_address}
+            returnAddress={userResponse.return_address}
+            availableSeats={userResponse.available_seats}
+            departureTime={userResponse.departure_time}
+            assignedRiders={assignedRiders}
+            assignedDriver={assignedDriver}
+          />
+        )}
+        {user && activeEvent && !hasSubmitted && (
           <ActiveEventCard
             eventId={activeEvent.id}
             eventDate={activeEvent.event_date}

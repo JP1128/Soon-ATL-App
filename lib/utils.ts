@@ -6,7 +6,11 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatDisplayAddress(address: string): string {
-  return address.replace(/,?\s*[A-Z]{2}\s*\d{5}(-\d{4})?\s*$/, "").replace(/,?\s*USA?\s*$/, "").trim();
+  return address
+    .replace(/,?\s*USA?\s*$/i, "")
+    .replace(/,?\s*\b[A-Z]{2}\s+\d{5}(-\d{4})?\s*$/i, "")
+    .replace(/,?\s*\b[A-Z]{2}\s*$/i, "")
+    .trim();
 }
 
 export function formatPhoneNumber(value: string): string {

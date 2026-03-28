@@ -112,8 +112,23 @@
   100% { box-shadow: 0 0 0 0 oklch(0.577 0.245 27.325 / 0%); }
 }
 
+@keyframes wiggle {
+  0% { transform: rotate(0deg) scale(1); }
+  15% { transform: rotate(-12deg) scale(1.1); }
+  30% { transform: rotate(10deg) scale(1.15); }
+  45% { transform: rotate(-8deg) scale(1.1); }
+  60% { transform: rotate(6deg) scale(1.05); }
+  75% { transform: rotate(-3deg) scale(1); }
+  90% { transform: rotate(1deg); }
+  100% { transform: rotate(0deg); }
+}
+
 .animate-fluid-wave {
   animation: fluid-wave 3s linear infinite;
+}
+
+.animate-wiggle {
+  animation: wiggle 0.5s ease-in-out;
 }
 
 .scrollbar-none {

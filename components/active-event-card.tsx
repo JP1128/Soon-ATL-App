@@ -102,7 +102,7 @@ export function ActiveEventCard({
               : rejectedPhase === "fall"
                 ? "h-0 transition-all duration-500"
                 : needsResponse
-                  ? "h-[5%] transition-all duration-700"
+                  ? "h-[2%] transition-all duration-700"
                   : "h-0 transition-all duration-700"
         }`}
       >
@@ -127,19 +127,24 @@ export function ActiveEventCard({
         }`}
       >
         <div className="min-w-0">
-          <p className="font-semibold">{title}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
-          <p className="mt-0.5 text-sm text-muted-foreground">{address}</p>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
-          <Badge variant={statusConfig[status].variant}>
-            {statusConfig[status].label}
-          </Badge>
-          {daysLeft >= 0 && (
-            <Badge variant="outline" className="text-xs">
-              {daysLeft === 0 ? "Today" : daysLeft === 1 ? "Tomorrow" : `${daysLeft} days left`}
+          <div className="flex items-center gap-2">
+            <p className="font-semibold">{title}</p>
+            <Badge variant={statusConfig[status].variant}>
+              {statusConfig[status].label}
             </Badge>
-          )}
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {subtitle}
+            {daysLeft >= 0 && (
+              <>
+                {" · "}
+                <span className="font-semibold text-foreground">
+                  {daysLeft === 0 ? "Today" : daysLeft === 1 ? "Tomorrow" : `${daysLeft} days left`}
+                </span>
+              </>
+            )}
+          </p>
+          <p className="mt-0.5 text-sm text-muted-foreground">{address}</p>
         </div>
       </div>
     </button>

@@ -138,3 +138,73 @@ export async function POST(request: Request, { params }: RouteParams): Promise<N
 
   return NextResponse.json(response, { status: 201 });
 }
+
+export async function DELETE(_request: Request, { params }: RouteParams): Promise<NextResponse> {
+  const { eventId } = await params;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Find the user's response for this event
+  const { data: response } = await supabase
+    .from("responses")
+    .select("id")
+    .eq("event_id", eventId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!response) {
+    return NextResponse.json({ error: "Response not found" }, { status: 404 });
+  }
+
+  // Delete preferences first (foreign key constraint)
+  await supabase.from("preferences").delete().eq("response_id", response.id);
+
+  // Clean up carpool assignments for this user/event
+  // Remove as rider from any carpools
+  const { data: carpoolsForEvent } = await supabase
+    .from("carpools")
+    .select("id")
+    .eq("event_id", eventId);
+
+  if (carpoolsForEvent && carpoolsForEvent.length > 0) {
+    const carpoolIds = carpoolsForEvent.map((c) => c.id);
+    await supabase
+      .from("carpool_riders")
+      .delete()
+      .in("carpool_id", carpoolIds)
+      .eq("rider_id", user.id);
+  }
+
+  // Remove carpools where this user is the driver
+  // First delete riders assigned to those carpools
+  const { data: driverCarpools } = await supabase
+    .from("carpools")
+    .select("id")
+    .eq("event_id", eventId)
+    .eq("driver_id", user.id);
+
+  if (driverCarpools && driverCarpools.length > 0) {
+    const driverCarpoolIds = driverCarpools.map((c) => c.id);
+    await supabase.from("carpool_riders").delete().in("carpool_id", driverCarpoolIds);
+    await supabase.from("carpools").delete().in("id", driverCarpoolIds);
+  }
+
+  // Delete the response
+  const { error } = await supabase
+    .from("responses")
+    .delete()
+    .eq("id", response.id)
+    .eq("user_id", user.id);
+
+  if (error) {
+    return NextResponse.json({ error: "Failed to remove response" }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true });
+}
