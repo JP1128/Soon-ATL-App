@@ -154,3 +154,13 @@ carpool_riders: id (uuid, PK), carpool_id (references carpools), rider_id (refer
 - Write unit tests for the matching algorithm (this is the most critical logic)
 - Use `vitest` as the test runner
 - Test edge cases: more riders than seats, conflicting avoid preferences, no drivers available
+
+## Loading States
+
+Whenever a route navigation or async operation (API call, resource loading) occurs, show the fluid wave loading animation:
+
+- Import `triggerFluidWave` and `dismissFluidWave` from `@/components/ui/fluid-wave-loader`
+- Call `triggerFluidWave()` before starting the operation (before `fetch`, `router.push`, etc.)
+- Call `dismissFluidWave()` when the operation completes (in a `finally` block for API calls, or after navigation resolves)
+- For route navigations via `router.push()` / `router.replace()`, call `triggerFluidWave()` immediately before — the `FluidWaveLoader` component auto-dismisses on pathname change
+- The `FluidWaveLoader` component is rendered once in the root `layout.tsx` and uses custom events (`fluid-wave-loading` / `fluid-wave-dismiss`) to coordinate globally

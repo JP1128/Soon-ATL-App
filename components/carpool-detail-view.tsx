@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { triggerFluidWave, dismissFluidWave } from "@/components/ui/fluid-wave-loader";
 import {
   DndContext,
   closestCenter,
@@ -580,6 +581,7 @@ export function CarpoolDetailView({
   const handleSend = async (): Promise<void> => {
     if (!carpoolId || !needsSend) return;
     setSaving(true);
+    triggerFluidWave();
     try {
       const res = await fetch(`/api/events/carpool-order`, {
         method: "PATCH",
@@ -603,6 +605,7 @@ export function CarpoolDetailView({
       console.error("Failed to save pickup order:", err);
     } finally {
       setSaving(false);
+      dismissFluidWave();
     }
   };
 
