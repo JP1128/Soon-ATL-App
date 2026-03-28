@@ -3,6 +3,7 @@ import { formatDisplayAddress } from "@/lib/utils";
 import { LoginButton } from "@/components/login-button";
 import { ActiveEventCard } from "@/components/active-event-card";
 import { SubmittedEventCard } from "@/components/submitted-event-card";
+import { RealtimeEventRefresh } from "@/components/realtime-event-refresh";
 import type { Event, Profile, Response, PublishedCarpoolEntry } from "@/types/database";
 
 type UserEventStatus = "needs-response" | "submitted" | "ride-assigned";
@@ -226,6 +227,12 @@ export default async function HomePage(): Promise<React.ReactElement> {
         )}
         {user && !activeEvent && (
           <p className="text-sm text-muted-foreground">No open events right now.</p>
+        )}
+        {user && activeEvent && (
+          <RealtimeEventRefresh
+            eventId={activeEvent.id}
+            carpoolsSentAt={activeEvent.carpools_sent_at}
+          />
         )}
       </div>
     </div>
