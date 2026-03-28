@@ -82,7 +82,7 @@ export function ActiveEventCard({
   }
 
   return (
-    <>
+    <div className="relative w-full">
     <button
       type="button"
       onClick={handleClick}
@@ -150,7 +150,7 @@ export function ActiveEventCard({
             initial={{ opacity: 0, scaleX: 0.3 }}
             animate={{ opacity: 1, scaleX: 1 }}
             transition={{ delay: 0.5, duration: 0.4, ease: "easeOut" }}
-            className="mx-auto mt-5 h-[3px] w-16 origin-center overflow-hidden rounded-full bg-foreground/10"
+            className="absolute left-1/2 -translate-x-1/2 top-[calc(100%+20px)] h-[3px] w-16 origin-center overflow-hidden rounded-full bg-foreground/10"
           >
             <motion.div
               className="h-full w-1/2 rounded-full bg-foreground/40"
@@ -165,6 +165,6 @@ export function ActiveEventCard({
           </motion.div>
         )}
       </AnimatePresence>
-    </>
+    </div>
   );
 }
