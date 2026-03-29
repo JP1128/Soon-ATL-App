@@ -77,10 +77,10 @@ function AddressPickerOverlay({
   )
 
   const [recentAddresses, setRecentAddresses] = React.useState<AddressResult[]>([])
-  const [keyboardOpen, setKeyboardOpen] = React.useState(false)
-  const [viewportTop, setViewportTop] = React.useState(0)
 
   const searchInputRef = React.useRef<HTMLInputElement>(null)
+  const containerRef = React.useRef<HTMLDivElement>(null)
+  const rafRef = React.useRef<number>(0)
   const sessionTokenRef = React.useRef<google.maps.places.AutocompleteSessionToken | null>(null)
   const geocoderRef = React.useRef<google.maps.Geocoder | null>(null)
   const mapRef = React.useRef<google.maps.Map | null>(null)
@@ -110,14 +110,16 @@ function AddressPickerOverlay({
       })
     } else {
       setVisible(false)
-      setKeyboardOpen(false)
-      setViewportTop(0)
+      if (containerRef.current) {
+        containerRef.current.style.transform = ""
+        containerRef.current.style.top = ""
+      }
       const timer = setTimeout(() => setMounted(false), 200)
       return () => clearTimeout(timer)
     }
   }, [open, initialAddress, initialLat, initialLng])
 
-  // Detect keyboard open/close via visualViewport
+  // Position overlay relative to visual viewport using direct DOM manipulation
   React.useEffect(() => {
     if (!open) return
     const vv = window.visualViewport
@@ -125,10 +127,20 @@ function AddressPickerOverlay({
 
     const threshold = window.innerHeight * 0.25
     function onViewportChange(): void {
-      const heightDiff = window.innerHeight - (vv?.height ?? window.innerHeight)
-      const isOpen = heightDiff > threshold
-      setKeyboardOpen(isOpen)
-      setViewportTop(isOpen ? (vv?.offsetTop ?? 0) : 0)
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = requestAnimationFrame(() => {
+        const el = containerRef.current
+        if (!el) return
+        const heightDiff = window.innerHeight - (vv?.height ?? window.innerHeight)
+        if (heightDiff > threshold) {
+          const offset = vv?.offsetTop ?? 0
+          el.style.top = "5%"
+          el.style.transform = `translateY(${offset}px)`
+        } else {
+          el.style.top = "50%"
+          el.style.transform = "translateY(-50%)"
+        }
+      })
     }
 
     vv.addEventListener("resize", onViewportChange)
@@ -136,6 +148,7 @@ function AddressPickerOverlay({
     return () => {
       vv.removeEventListener("resize", onViewportChange)
       vv.removeEventListener("scroll", onViewportChange)
+      cancelAnimationFrame(rafRef.current)
     }
   }, [open])
 
@@ -274,12 +287,13 @@ function AddressPickerOverlay({
         onClick={onClose}
       />
       <div
+        ref={containerRef}
         className={cn(
-          "absolute inset-x-0 flex justify-center pointer-events-none transition-all duration-200",
-          keyboardOpen ? "" : "top-1/2 -translate-y-1/2",
+          "absolute inset-x-0 top-1/2 flex justify-center pointer-events-none will-change-transform",
+          "transition-[opacity,scale] duration-200",
           visible ? "opacity-100 scale-100" : "opacity-0 scale-95"
         )}
-        style={keyboardOpen ? { top: `calc(${viewportTop}px + 5%)` } : undefined}
+        style={{ transform: "translateY(-50%)" }}
       >
         <div className="pointer-events-auto w-full max-w-[calc(100%-2rem)] sm:max-w-sm rounded-4xl bg-popover p-6 ring-1 ring-foreground/5">
           {title && (

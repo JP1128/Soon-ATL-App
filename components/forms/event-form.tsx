@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { TimeWheelPicker } from "@/components/ui/time-wheel-picker";
@@ -77,6 +78,7 @@ export function EventForm({
 
   const initialTime = parseTime(existingResponse?.departure_time ?? "");
 
+  const router = useRouter();
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState<"forward" | "backward">("forward");
   const [stepKey, setStepKey] = useState(0);
@@ -278,11 +280,11 @@ export function EventForm({
           variant="outline"
           className="mt-6"
           onClick={() => {
-            setSubmitted(false);
-            setStep(0);
+            triggerFluidWave();
+            router.push("/");
           }}
         >
-          Edit response
+          Back to home
         </Button>
       </div>
     );

@@ -34,9 +34,9 @@ function TextInputOverlay({
   const [mounted, setMounted] = React.useState(false)
   const [visible, setVisible] = React.useState(false)
   const [draft, setDraft] = React.useState(initialValue)
-  const [keyboardOpen, setKeyboardOpen] = React.useState(false)
-  const [viewportTop, setViewportTop] = React.useState(0)
   const inputRef = React.useRef<HTMLInputElement | HTMLTextAreaElement>(null)
+  const containerRef = React.useRef<HTMLDivElement>(null)
+  const rafRef = React.useRef<number>(0)
 
   React.useEffect(() => {
     if (open) {
@@ -47,14 +47,16 @@ function TextInputOverlay({
       })
     } else {
       setVisible(false)
-      setKeyboardOpen(false)
-      setViewportTop(0)
+      if (containerRef.current) {
+        containerRef.current.style.transform = ""
+        containerRef.current.style.top = ""
+      }
       const timer = setTimeout(() => setMounted(false), 200)
       return () => clearTimeout(timer)
     }
   }, [open, initialValue])
 
-  // Detect keyboard open/close via visualViewport and track offset
+  // Position overlay relative to visual viewport using direct DOM manipulation
   React.useEffect(() => {
     if (!open) return
     const vv = window.visualViewport
@@ -62,10 +64,20 @@ function TextInputOverlay({
 
     const threshold = window.innerHeight * 0.25
     function onViewportChange(): void {
-      const heightDiff = window.innerHeight - (vv?.height ?? window.innerHeight)
-      const isOpen = heightDiff > threshold
-      setKeyboardOpen(isOpen)
-      setViewportTop(isOpen ? (vv?.offsetTop ?? 0) : 0)
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = requestAnimationFrame(() => {
+        const el = containerRef.current
+        if (!el) return
+        const heightDiff = window.innerHeight - (vv?.height ?? window.innerHeight)
+        if (heightDiff > threshold) {
+          const offset = vv?.offsetTop ?? 0
+          el.style.top = "5%"
+          el.style.transform = `translateY(${offset}px)`
+        } else {
+          el.style.top = "50%"
+          el.style.transform = "translateY(-50%)"
+        }
+      })
     }
 
     vv.addEventListener("resize", onViewportChange)
@@ -73,6 +85,7 @@ function TextInputOverlay({
     return () => {
       vv.removeEventListener("resize", onViewportChange)
       vv.removeEventListener("scroll", onViewportChange)
+      cancelAnimationFrame(rafRef.current)
     }
   }, [open])
 
@@ -112,12 +125,13 @@ function TextInputOverlay({
         onClick={onClose}
       />
       <div
+        ref={containerRef}
         className={cn(
-          "absolute inset-x-0 flex justify-center pointer-events-none transition-all duration-200",
-          keyboardOpen ? "" : "top-1/2 -translate-y-1/2",
+          "absolute inset-x-0 top-1/2 flex justify-center pointer-events-none will-change-transform",
+          "transition-[opacity,scale] duration-200",
           visible ? "opacity-100 scale-100" : "opacity-0 scale-95"
         )}
-        style={keyboardOpen ? { top: `calc(${viewportTop}px + 5%)` } : undefined}
+        style={{ transform: "translateY(-50%)" }}
       >
         <div className="pointer-events-auto w-full max-w-[calc(100%-2rem)] sm:max-w-sm rounded-4xl bg-popover p-6 ring-1 ring-foreground/5">
           {title && (
