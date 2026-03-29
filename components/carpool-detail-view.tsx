@@ -28,7 +28,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn, formatPhoneNumber } from "@/lib/utils";
+import { formatPhoneNumber } from "@/lib/utils";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowLeft01Icon,
@@ -141,37 +141,6 @@ function getInitials(name: string): string {
     .join("")
     .toUpperCase()
     .slice(0, 2);
-}
-
-function ScrollReveal({ children, scrollRoot }: { children: React.ReactNode; scrollRoot: React.RefObject<HTMLDivElement | null> }): React.ReactElement {
-  const ref = useRef<HTMLDivElement>(null);
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => setIsVisible(entry.isIntersecting),
-      { root: scrollRoot.current, threshold: 0.1, rootMargin: "0px 0px -120px 0px" }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [scrollRoot]);
-
-  return (
-    <div
-      ref={ref}
-      style={{
-        transform: isVisible ? "translateX(0)" : "translateX(1.5rem)",
-        opacity: isVisible ? 1 : 0,
-        transition: isVisible
-          ? "transform 300ms ease-out, opacity 300ms ease-out"
-          : "transform 150ms ease-in, opacity 150ms ease-in",
-      }}
-    >
-      {children}
-    </div>
-  );
 }
 
 function svgIcon(svg: string, size: number): google.maps.Icon {
@@ -441,29 +410,6 @@ export function CarpoolDetailView({
   const [routeLoading, setRouteLoading] = useState(false);
   const markersRef = useRef<google.maps.Marker[]>([]);
   const polylinesRef = useRef<google.maps.Polyline[]>([]);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [canScrollUp, setCanScrollUp] = useState(false);
-  const [canScrollDown, setCanScrollDown] = useState(false);
-
-  const checkScroll = useCallback((): void => {
-    const el = scrollRef.current;
-    if (!el) return;
-    setCanScrollUp(el.scrollTop > 10);
-    setCanScrollDown(el.scrollTop + el.clientHeight < el.scrollHeight - 10);
-  }, []);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.addEventListener("scroll", checkScroll, { passive: true });
-    const ro = new ResizeObserver(checkScroll);
-    ro.observe(el);
-    for (const child of el.children) ro.observe(child);
-    return () => {
-      el.removeEventListener("scroll", checkScroll);
-      ro.disconnect();
-    };
-  }, [checkScroll, riders]);
 
   // Sync local state when props change (e.g. from realtime refresh)
   const ridersKey = (initialRiders ?? []).map((r) => r.id).join(",");
@@ -765,9 +711,9 @@ export function CarpoolDetailView({
   const center = eventCoords ?? { lat: 33.749, lng: -84.388 };
 
   return (
-    <div className="relative flex h-full flex-col">
+    <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex-none flex items-center gap-2 px-5 pt-5 pb-3">
+      <div className="flex items-center gap-2 px-5 pt-5 pb-3">
         <button
           onClick={onBack}
           className="flex size-8 items-center justify-center rounded-full hover:bg-secondary active:bg-secondary/80 transition-colors"
@@ -844,7 +790,7 @@ export function CarpoolDetailView({
       </div>
 
       {/* Map */}
-      <div className="flex-none mx-5 overflow-hidden rounded-xl" style={{ height: 200 }}>
+      <div className="mx-5 overflow-hidden rounded-xl" style={{ height: 200 }}>
         {mapsLoaded ? (
           <GoogleMap
             mapContainerStyle={{ width: "100%", height: "100%" }}
@@ -869,7 +815,7 @@ export function CarpoolDetailView({
       </div>
 
       {/* Route info */}
-      <div className="flex-none mx-5 mt-2.5 flex items-center gap-4">
+      <div className="mx-5 mt-2.5 flex items-center gap-4">
         <div className="flex items-center gap-1.5">
           <HugeiconsIcon icon={Road01Icon} className="size-3.5 text-muted-foreground" strokeWidth={1.5} />
           <p className="text-[11px] text-muted-foreground">
@@ -899,29 +845,9 @@ export function CarpoolDetailView({
         )}
       </div>
 
-      {/* Top scroll indicator */}
-      {isDriver && riders.length > 0 && (
-        <div
-          className={cn(
-            "flex-none flex justify-center h-5 items-center transition-opacity duration-200",
-            canScrollUp ? "opacity-100" : "opacity-0"
-          )}
-        >
-          <span className="text-[10px] tracking-[0.25em] text-muted-foreground/50">•••</span>
-        </div>
-      )}
-
       {/* Rider list (driver view) */}
       {isDriver && riders.length > 0 && (
-        <div className="relative min-h-0 flex-1">
-        <div
-          ref={scrollRef}
-          className="absolute inset-0 overflow-y-auto overflow-x-hidden overscroll-contain scrollbar-none px-5"
-          style={{
-            maskImage: `linear-gradient(to bottom, ${canScrollUp ? "transparent, black 1.5rem" : "black 0%"}, black calc(100% - 7.5rem), transparent calc(100% - 6rem), transparent)`,
-            WebkitMaskImage: `linear-gradient(to bottom, ${canScrollUp ? "transparent, black 1.5rem" : "black 0%"}, black calc(100% - 7.5rem), transparent calc(100% - 6rem), transparent)`,
-          }}
-        >
+        <div className="mt-4 min-h-0 flex-1 overflow-y-auto px-5">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Pickup Order
@@ -938,43 +864,31 @@ export function CarpoolDetailView({
           </div>
           <DndContext id="carpool-rider-dnd" sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={riders.map((r) => r.id)} strategy={verticalListSortingStrategy}>
-              <div className="space-y-1 pb-44">
+              <div className="space-y-1">
                 {riders.map((rider, i) => (
-                  <ScrollReveal key={rider.id} scrollRoot={scrollRef}>
-                    <SortableRiderItem
-                      rider={rider}
-                      index={i}
-                      leg={leg}
-                      isChanged={changedRiderIds.has(rider.id)}
-                      legDurationMin={routeInfo?.legDurationsMin[i] ?? null}
-                      cumulativeMin={
-                        routeInfo?.legDurationsMin
-                          ? routeInfo.legDurationsMin.slice(0, i + 1).reduce((a, b) => a + b, 0)
-                          : null
-                      }
-                    />
-                  </ScrollReveal>
+                  <SortableRiderItem
+                    key={rider.id}
+                    rider={rider}
+                    index={i}
+                    leg={leg}
+                    isChanged={changedRiderIds.has(rider.id)}
+                    legDurationMin={routeInfo?.legDurationsMin[i] ?? null}
+                    cumulativeMin={
+                      routeInfo?.legDurationsMin
+                        ? routeInfo.legDurationsMin.slice(0, i + 1).reduce((a, b) => a + b, 0)
+                        : null
+                    }
+                  />
                 ))}
               </div>
             </SortableContext>
           </DndContext>
         </div>
-
-        {/* Bottom scroll indicator */}
-        <div
-          className={cn(
-            "absolute inset-x-0 bottom-24 z-10 flex justify-center pointer-events-none transition-opacity duration-200",
-            canScrollDown ? "opacity-100" : "opacity-0"
-          )}
-        >
-          <span className="text-[10px] tracking-[0.25em] text-muted-foreground/50">•••</span>
-        </div>
-        </div>
       )}
 
       {/* Driver info (rider view) */}
       {!isDriver && driver && (
-        <div className="mt-4 flex-none px-5 pb-28">
+        <div className="mt-4 flex-1 px-5">
           <p className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Your Driver
           </p>
@@ -990,7 +904,7 @@ export function CarpoolDetailView({
 
       {/* Send button (drivers only) */}
       {isDriver && riders.length > 0 && (
-        <div className="absolute bottom-0 left-0 right-0 px-5 pb-24 pt-3 bg-gradient-to-t from-background via-background to-transparent">
+        <div className="mt-auto px-5 pb-5 pt-3">
           {lastSentAt && (
             <p className="mb-2 text-center text-[11px] text-muted-foreground">
               Last confirmed {new Date(lastSentAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}{" "}
