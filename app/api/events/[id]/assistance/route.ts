@@ -5,6 +5,7 @@ import {
   buildHaversineDistanceLookup,
   routeOrder,
   DESTINATION_ID,
+  type CarpoolAssignment,
   type OptimizationMetrics,
   type IterationSnapshot,
 } from "@/lib/matching/algorithm";
@@ -121,6 +122,24 @@ export async function POST(
     }
   }
 
+  // Fetch current carpool audit assignments to use as partial greedy baseline
+  const { data: existingCarpools } = await supabase
+    .from("carpools")
+    .select("driver_id, leg, carpool_riders(rider_id)")
+    .eq("event_id", eventId);
+
+  const existingByLeg: Record<string, CarpoolAssignment[]> = { before: [], after: [] };
+  if (existingCarpools) {
+    for (const cp of existingCarpools) {
+      const leg = cp.leg as string;
+      if (leg !== "before" && leg !== "after") continue;
+      existingByLeg[leg].push({
+        driverId: cp.driver_id,
+        riderIds: (cp.carpool_riders as Array<{ rider_id: string }>).map((r) => r.rider_id),
+      });
+    }
+  }
+
   for (const legKey of ["before", "after"] as const) {
     const roleField = legKey === "before" ? "before_role" : "after_role";
 
@@ -181,6 +200,8 @@ export async function POST(
       preferences,
       destLat,
       destLng,
+      undefined,
+      existingByLeg[legKey],
     );
     result[legKey] = optimized.assignments;
     metrics[legKey] = optimized.metrics;

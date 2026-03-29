@@ -151,6 +151,25 @@ function svgIcon(svg: string, size: number): google.maps.Icon {
   };
 }
 
+// Cache loaded avatar images to avoid repeated fetches & 429 rate limits
+const avatarImageCache = new Map<string, HTMLImageElement>();
+
+function loadAvatarImage(url: string): Promise<HTMLImageElement | null> {
+  const cached = avatarImageCache.get(url);
+  if (cached) return Promise.resolve(cached);
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = (): void => {
+      avatarImageCache.set(url, img);
+      resolve(img);
+    };
+    img.onerror = (): void => resolve(null);
+    img.src = url;
+  });
+}
+
 function createAvatarIcon(
   avatarUrl: string | null,
   name: string,
@@ -191,9 +210,11 @@ function createAvatarIcon(
       return;
     }
 
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = (): void => {
+    loadAvatarImage(avatarUrl).then((img) => {
+      if (!img) {
+        drawFallback();
+        return;
+      }
       // Border circle
       ctx.beginPath();
       ctx.arc(s / 2, s / 2, s / 2, 0, Math.PI * 2);
@@ -209,9 +230,7 @@ function createAvatarIcon(
         scaledSize: new google.maps.Size(size, size),
         anchor: new google.maps.Point(size / 2, size / 2),
       });
-    };
-    img.onerror = drawFallback;
-    img.src = avatarUrl;
+    });
   });
 }
 

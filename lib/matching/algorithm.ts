@@ -529,6 +529,7 @@ export function optimizedMatchCarpools(
   destinationLat: number,
   destinationLng: number,
   distanceLookup?: DistanceLookup,
+  existingAssignments?: CarpoolAssignment[],
 ): { assignments: CarpoolAssignment[]; metrics: OptimizationMetrics; history: IterationSnapshot[] } {
   if (drivers.length === 0) {
     return {
@@ -547,13 +548,14 @@ export function optimizedMatchCarpools(
     };
   }
 
-  const MAX_RESTARTS = 50;
+  const MAX_RESTARTS = 100;
 
   const avoidMap = new Map<string, Set<string>>();
+  const preferMap = new Map<string, Set<string>>();
   for (const pref of preferences) {
-    if (pref.type !== "avoid") continue;
-    if (!avoidMap.has(pref.userId)) avoidMap.set(pref.userId, new Set());
-    avoidMap.get(pref.userId)!.add(pref.targetUserId);
+    const map = pref.type === "avoid" ? avoidMap : preferMap;
+    if (!map.has(pref.userId)) map.set(pref.userId, new Set());
+    map.get(pref.userId)!.add(pref.targetUserId);
   }
 
   const seatCapacity = new Map<string, number>();
@@ -578,7 +580,70 @@ export function optimizedMatchCarpools(
     bestAssignments.set(a.driverId, [...a.riderIds]);
   }
 
-  const greedyDistanceM = totalRouteDistance(bestAssignments, DESTINATION_ID, lookup);
+  // ── Compute baseline distance ──
+  // When existing audit assignments are provided, use them as a starting point
+  // and greedily fill only the unassigned riders. Otherwise, full greedy baseline.
+  let greedyDistanceM: number;
+  const hasExistingRiders = existingAssignments?.some((a) => a.riderIds.length > 0) ?? false;
+
+  if (hasExistingRiders && existingAssignments) {
+    const baseAssignments = new Map<string, string[]>();
+    const baseSeats = new Map<string, number>();
+    const assignedSet = new Set<string>();
+    const riderSet = new Set(riders.map((r) => r.userId));
+
+    for (const driver of drivers) {
+      baseAssignments.set(driver.userId, []);
+      baseSeats.set(driver.userId, driver.availableSeats);
+    }
+
+    // Seed with existing audit assignments (only riders present in this leg)
+    for (const a of existingAssignments) {
+      if (!baseAssignments.has(a.driverId)) continue;
+      const validRiders = a.riderIds.filter((rid) => riderSet.has(rid));
+      baseAssignments.set(a.driverId, [...validRiders]);
+      baseSeats.set(a.driverId, Math.max(0, seatCapacity.get(a.driverId)! - validRiders.length));
+      for (const rid of validRiders) assignedSet.add(rid);
+    }
+
+    // Greedy-assign remaining unassigned riders (same logic as matchCarpools)
+    const unassigned = riders.filter((r) => !assignedSet.has(r.userId));
+    const sorted = [...unassigned].sort((a, b) => {
+      return lookup(b.userId, DESTINATION_ID) - lookup(a.userId, DESTINATION_ID);
+    });
+
+    for (const rider of sorted) {
+      let bestDriverId: string | null = null;
+      let bestScore = -Infinity;
+
+      for (const driver of drivers) {
+        const seats = baseSeats.get(driver.userId)!;
+        if (seats <= 0) continue;
+        const currentRiders = baseAssignments.get(driver.userId)!;
+        if (violatesAvoid(rider.userId, driver.userId, currentRiders, avoidMap)) continue;
+
+        const distance = lookup(rider.userId, driver.userId);
+        const bonus = preferenceBonus(rider.userId, driver.userId, currentRiders, preferMap);
+        const normalizedDistance = Math.min(distance / 50000, 1);
+        const score = bonus * 0.5 - normalizedDistance;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestDriverId = driver.userId;
+        }
+      }
+
+      if (bestDriverId) {
+        baseAssignments.get(bestDriverId)!.push(rider.userId);
+        baseSeats.set(bestDriverId, baseSeats.get(bestDriverId)! - 1);
+      }
+    }
+
+    greedyDistanceM = totalRouteDistance(baseAssignments, DESTINATION_ID, lookup);
+  } else {
+    greedyDistanceM = totalRouteDistance(bestAssignments, DESTINATION_ID, lookup);
+  }
+
   const history: IterationSnapshot[] = [
     { iteration: 0, type: "greedy", assignments: snapshotFrom(bestAssignments), costM: greedyDistanceM },
   ];
