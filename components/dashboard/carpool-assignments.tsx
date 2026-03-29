@@ -720,12 +720,22 @@ export function CarpoolAssignments({
 
     // Persist to server
     try {
+      let anyFailed = false;
       for (const riderId of riderIds) {
-        await fetch(`/api/events/${eventId}/carpools`, {
+        const res = await fetch(`/api/events/${eventId}/carpools`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ driverId, riderId, leg }),
         });
+        if (!res.ok) anyFailed = true;
+      }
+      if (anyFailed) {
+        // Re-fetch to correct optimistic update
+        const res = await fetch(`/api/events/${eventId}/carpools`);
+        if (res.ok) {
+          const data = await res.json();
+          setCarpools(data.carpools);
+        }
       }
     } catch {
       const res = await fetch(`/api/events/${eventId}/carpools`);
@@ -750,11 +760,18 @@ export function CarpoolAssignments({
     setRiderDetailTarget(null);
 
     try {
-      await fetch(`/api/events/${eventId}/carpools`, {
+      const deleteRes = await fetch(`/api/events/${eventId}/carpools`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ riderId, leg }),
       });
+      if (!deleteRes.ok) {
+        const res = await fetch(`/api/events/${eventId}/carpools`);
+        if (res.ok) {
+          const data = await res.json();
+          setCarpools(data.carpools);
+        }
+      }
     } catch {
       const res = await fetch(`/api/events/${eventId}/carpools`);
       if (res.ok) {
@@ -794,11 +811,18 @@ export function CarpoolAssignments({
     setRiderDetailTarget(null);
 
     try {
-      await fetch(`/api/events/${eventId}/carpools`, {
+      const reassignRes = await fetch(`/api/events/${eventId}/carpools`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ driverId: newDriverId, riderId, leg }),
       });
+      if (!reassignRes.ok) {
+        const res = await fetch(`/api/events/${eventId}/carpools`);
+        if (res.ok) {
+          const data = await res.json();
+          setCarpools(data.carpools);
+        }
+      }
     } catch {
       const res = await fetch(`/api/events/${eventId}/carpools`);
       if (res.ok) {
@@ -815,10 +839,19 @@ export function CarpoolAssignments({
       const res = await fetch(`/api/events/${eventId}/carpools`, {
         method: "PATCH",
       });
-      if (res.ok) {
-        const data = await res.json();
-        setSentAt(data.carpools_sent_at);
-        // Update local published state to match current live carpools (per-leg)
+      if (!res.ok) {
+        setSending(false);
+        dismissFluidWave();
+        return;
+      }
+      const data = await res.json();
+      setSentAt(data.carpools_sent_at);
+      // Re-fetch carpools from server to ensure published state matches DB
+      const carpoolsRes = await fetch(`/api/events/${eventId}/carpools`);
+      if (carpoolsRes.ok) {
+        const carpoolsData = await carpoolsRes.json();
+        const serverCarpools = carpoolsData.carpools as CarpoolRow[];
+        setCarpools(serverCarpools);
         const toEntries = (items: CarpoolRow[]): PublishedCarpoolEntry[] =>
           items.map((c) => ({
             id: c.id,
@@ -828,16 +861,16 @@ export function CarpoolAssignments({
               .map((r) => ({ rider_id: r.rider_id, pickup_order: r.pickup_order })),
           }));
         setPublished({
-          before: toEntries(carpools.filter((c) => c.leg === "before")),
-          after: toEntries(carpools.filter((c) => c.leg === "after")),
+          before: toEntries(serverCarpools.filter((c) => c.leg === "before")),
+          after: toEntries(serverCarpools.filter((c) => c.leg === "after")),
         });
       }
+      setShowSendConfirm(false);
     } catch {
-      // silently fail
+      // Network error — keep overlay open
     } finally {
       setSending(false);
       dismissFluidWave();
-      setShowSendConfirm(false);
     }
   }
 

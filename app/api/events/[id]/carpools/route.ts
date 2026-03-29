@@ -285,7 +285,7 @@ export async function PATCH(
     .eq("id", eventId)
     .single() as { data: { published_carpools: { before: PublishedCarpoolEntry[]; after: PublishedCarpoolEntry[] } | null } | null };
 
-  const { data: carpools } = await supabase
+  const { data: carpools, error: carpoolsError } = await supabase
     .from("carpools")
     .select("id, driver_id, leg, carpool_riders(rider_id, pickup_order)")
     .eq("event_id", eventId) as {
@@ -295,7 +295,15 @@ export async function PATCH(
       leg: string;
       carpool_riders: Array<{ rider_id: string; pickup_order: number }>;
     }> | null;
+    error: unknown;
   };
+
+  if (carpoolsError) {
+    return NextResponse.json(
+      { error: "Failed to fetch carpools" },
+      { status: 500 }
+    );
+  }
 
   const toEntries = (items: typeof carpools): Array<{ id: string; driver_id: string; riders: Array<{ rider_id: string; pickup_order: number }> }> =>
     (items ?? []).map((c) => ({
@@ -322,6 +330,7 @@ export async function PATCH(
     .single();
 
   if (error) {
+    console.error("Failed to update event with carpool assignments:", error);
     return NextResponse.json(
       { error: "Failed to send carpool assignments" },
       { status: 500 }
