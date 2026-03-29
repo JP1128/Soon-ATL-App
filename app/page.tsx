@@ -186,24 +186,46 @@ export default async function HomePage(): Promise<React.ReactElement> {
   const hasSubmitted = userStatus === "submitted" || userStatus === "ride-assigned";
 
   return (
-    <PullToRefresh className={`flex w-full max-w-lg flex-col items-center overflow-hidden px-6 ${hasSubmitted ? "flex-1 pt-6 pb-4" : "flex-1 justify-center"}`}>
+    <PullToRefresh className={`flex w-full max-w-lg flex-col items-center overflow-hidden px-6 ${hasSubmitted ? "flex-1 pt-6 pb-4" : "flex-1"}`}>
       {user && activeEvent && <RealtimeRefresh eventId={activeEvent.id} />}
       {/* Brand — hidden after submission */}
       {!hasSubmitted && (
-        <>
+        <div className="flex flex-1 flex-col items-center justify-center">
           <p className="text-xs font-medium tracking-[0.3em] text-muted-foreground uppercase">
             Atlanta
           </p>
           <h1 className="mt-1 text-5xl font-bold tracking-tight tall:text-6xl xtall:text-7xl">
             SOON
           </h1>
-        </>
+          {/* Main content area (non-submitted) */}
+          <div className="mt-6 tall:mt-8 xtall:mt-10 flex w-full flex-col items-center gap-4">
+            {!user && <LoginButton />}
+            {user && activeEvent && !hasSubmitted && (
+              <ActiveEventCard
+                eventId={activeEvent.id}
+                eventDate={activeEvent.event_date}
+                title={activeEvent.title}
+                subtitle={`${new Date(activeEvent.event_date + "T00:00:00").toLocaleDateString("en-US", {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                })}${activeEvent.event_time ? ` · ${new Date(`1970-01-01T${activeEvent.event_time}`).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : ""}`}
+                address={formatDisplayAddress(activeEvent.location)}
+                status={userStatus}
+                hasPhoneNumber={!!profile?.phone_number}
+              />
+            )}
+            {user && !activeEvent && (
+              <p className="text-sm text-muted-foreground">No open events right now.</p>
+            )}
+          </div>
+        </div>
       )}
 
-      {/* Main content area */}
-      <div className={`${hasSubmitted ? "min-h-0 flex-1 overflow-hidden" : "mt-6 tall:mt-8 xtall:mt-10"} flex w-full flex-col items-center gap-4`}>
-        {!user && <LoginButton />}
-        {user && activeEvent && hasSubmitted && userResponse && (
+      {/* Main content area (submitted) */}
+      {hasSubmitted && (
+        <div className="min-h-0 flex-1 overflow-hidden flex w-full flex-col items-center gap-4">
+          {user && activeEvent && hasSubmitted && userResponse && (
           <SubmittedEventCard
             responseId={userResponse.id}
             eventId={activeEvent.id}
@@ -235,25 +257,8 @@ export default async function HomePage(): Promise<React.ReactElement> {
             returnLng={userResponse.return_lng}
           />
         )}
-        {user && activeEvent && !hasSubmitted && (
-          <ActiveEventCard
-            eventId={activeEvent.id}
-            eventDate={activeEvent.event_date}
-            title={activeEvent.title}
-            subtitle={`${new Date(activeEvent.event_date + "T00:00:00").toLocaleDateString("en-US", {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-            })}${activeEvent.event_time ? ` · ${new Date(`1970-01-01T${activeEvent.event_time}`).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : ""}`}
-            address={formatDisplayAddress(activeEvent.location)}
-            status={userStatus}
-            hasPhoneNumber={!!profile?.phone_number}
-          />
-        )}
-        {user && !activeEvent && (
-          <p className="text-sm text-muted-foreground">No open events right now.</p>
-        )}
-      </div>
+        </div>
+      )}
     </PullToRefresh>
   );
 }
