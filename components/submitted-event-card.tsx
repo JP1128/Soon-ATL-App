@@ -520,8 +520,14 @@ export function SubmittedEventCard({
                   ? pickupLng
                   : (activeLeg === "before" ? beforeAssignedDriver : afterAssignedDriver)?.pickup_lng ?? null
               }
+              driverPickupAddress={
+                (activeLeg === "before" && beforeRole === "driver") || (activeLeg === "after" && afterRole === "driver")
+                  ? pickupAddress
+                  : null
+              }
               returnLat={returnLat}
               returnLng={returnLng}
+              returnAddress={returnAddress}
               carpoolId={activeLeg === "before" ? beforeCarpoolId : afterCarpoolId}
               carpoolsSentAt={carpoolsSentAt}
               pickupOrderSentAt={activeLeg === "before" ? beforePickupOrderSentAt : afterPickupOrderSentAt}

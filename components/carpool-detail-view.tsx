@@ -39,7 +39,9 @@ import {
   Road01Icon,
   DragDropVerticalIcon,
   MapsIcon,
+  MessageMultiple01Icon,
   MoreVerticalIcon,
+  Navigation03Icon,
 } from "@hugeicons/core-free-icons";
 
 /* ── Types ─────────────────────────────────────────────────────── */
@@ -73,8 +75,10 @@ interface CarpoolDetailViewProps {
   isDriver: boolean;
   driverPickupLat: number | null;
   driverPickupLng: number | null;
+  driverPickupAddress: string | null;
   returnLat: number | null;
   returnLng: number | null;
+  returnAddress: string | null;
   carpoolId: string | null;
   carpoolsSentAt: string | null;
   pickupOrderSentAt: string | null;
@@ -221,11 +225,15 @@ function SortableRiderItem({
   index,
   leg,
   isChanged,
+  legDurationMin,
+  cumulativeMin,
 }: {
   rider: RiderData;
   index: number;
   leg: "before" | "after";
   isChanged: boolean;
+  legDurationMin: number | null;
+  cumulativeMin: number | null;
 }): React.ReactElement {
   const {
     attributes,
@@ -280,6 +288,13 @@ function SortableRiderItem({
               {stripStateZip(addr)}
             </p>
           )}
+          {legDurationMin != null && (
+            <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground">
+              <span>{legDurationMin} min from prev</span>
+              <span className="text-muted-foreground/40">·</span>
+              <span>ETA {cumulativeMin} min</span>
+            </div>
+          )}
         </div>
       </a>
       <button
@@ -304,8 +319,10 @@ export function CarpoolDetailView({
   isDriver,
   driverPickupLat,
   driverPickupLng,
+  driverPickupAddress,
   returnLat,
   returnLng,
+  returnAddress,
   carpoolId,
   carpoolsSentAt,
   pickupOrderSentAt: initialPickupOrderSentAt,
@@ -349,7 +366,7 @@ export function CarpoolDetailView({
     return changed;
   }, [riders, hasNewOrRemovedRiders, savedOrder]);
   const needsSend = orderChanged || hasNewOrRemovedRiders;
-  const [routeInfo, setRouteInfo] = useState<{ distanceMiles: number; durationMin: number } | null>(null);
+  const [routeInfo, setRouteInfo] = useState<{ distanceMiles: number; durationMin: number; legDurationsMin: number[] } | null>(null);
   const [routeLoading, setRouteLoading] = useState(false);
   const markersRef = useRef<google.maps.Marker[]>([]);
   const polylinesRef = useRef<google.maps.Polyline[]>([]);
@@ -519,11 +536,14 @@ export function CarpoolDetailView({
           // Extract distance and duration
           const route = computed[0];
           const distanceMeters = route.distanceMeters;
-          const totalDurationMillis = route.legs?.reduce((sum, leg) => sum + (leg.durationMillis ?? 0), 0);
-          if (distanceMeters != null && totalDurationMillis != null && totalDurationMillis > 0) {
+          const legs = route.legs ?? [];
+          const totalDurationMillis = legs.reduce((sum, l) => sum + (l.durationMillis ?? 0), 0);
+          const legDurationsMin = legs.map((l) => Math.round((l.durationMillis ?? 0) / 60000));
+          if (distanceMeters != null && totalDurationMillis > 0) {
             setRouteInfo({
               distanceMiles: Math.round((distanceMeters / 1609.344) * 10) / 10,
               durationMin: Math.round(totalDurationMillis / 60000),
+              legDurationsMin,
             });
           }
         }
@@ -653,34 +673,58 @@ export function CarpoolDetailView({
             <DropdownMenuContent align="end" side="bottom" sideOffset={4} className="min-w-0 w-auto">
               <DropdownMenuItem
                 onClick={() => {
-                  const riderCoords = riders
-                    .map((r) => {
-                      const lat = leg === "before" ? r.pickup_lat : r.return_lat;
-                      const lng = leg === "before" ? r.pickup_lng : r.return_lng;
-                      return lat && lng ? `${lat},${lng}` : null;
-                    })
-                    .filter(Boolean);
-                  const origin = driverPickupLat && driverPickupLng
-                    ? `${driverPickupLat},${driverPickupLng}`
-                    : null;
-                  const dest = eventCoords
-                    ? `${eventCoords.lat},${eventCoords.lng}`
-                    : encodeURIComponent(location);
+                  const waypoints = riders
+                    .map((r) => leg === "before" ? r.pickup_address : r.return_address)
+                    .filter((a): a is string => !!a);
+                  const origin = leg === "before"
+                    ? (driverPickupAddress ?? (driverPickupLat && driverPickupLng ? `${driverPickupLat},${driverPickupLng}` : null))
+                    : location;
+                  const dest = leg === "before"
+                    ? location
+                    : (returnAddress ?? driverPickupAddress ?? (driverPickupLat && driverPickupLng ? `${driverPickupLat},${driverPickupLng}` : null));
                   const params = new URLSearchParams({ api: "1" });
-                  if (leg === "before") {
-                    if (origin) params.set("origin", origin);
-                    params.set("destination", dest as string);
-                    if (riderCoords.length > 0) params.set("waypoints", riderCoords.join("|"));
-                  } else {
-                    params.set("origin", dest as string);
-                    if (origin) params.set("destination", origin);
-                    if (riderCoords.length > 0) params.set("waypoints", riderCoords.join("|"));
-                  }
+                  if (origin) params.set("origin", origin);
+                  if (dest) params.set("destination", dest);
+                  if (waypoints.length > 0) params.set("waypoints", waypoints.join("|"));
                   window.open(`https://www.google.com/maps/dir/?${params.toString()}`, "_blank");
                 }}
               >
                 <HugeiconsIcon icon={MapsIcon} className="size-4" strokeWidth={1.5} />
                 Open in Maps
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  const phones = riders
+                    .map((r) => r.phone_number)
+                    .filter((p): p is string => !!p);
+                  if (phones.length === 0) return;
+                  window.open(`sms:${phones.join(",")}`, "_self");
+                }}
+                disabled={!riders.some((r) => r.phone_number)}
+              >
+                <HugeiconsIcon icon={MessageMultiple01Icon} className="size-4" strokeWidth={1.5} />
+                Group Chat
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  const waypoints = riders
+                    .map((r) => leg === "before" ? r.pickup_address : r.return_address)
+                    .filter((a): a is string => !!a);
+                  const origin = leg === "before"
+                    ? (driverPickupAddress ?? (driverPickupLat && driverPickupLng ? `${driverPickupLat},${driverPickupLng}` : null))
+                    : location;
+                  const dest = leg === "before"
+                    ? location
+                    : (returnAddress ?? driverPickupAddress ?? (driverPickupLat && driverPickupLng ? `${driverPickupLat},${driverPickupLng}` : null));
+                  const params = new URLSearchParams({ api: "1", travelmode: "driving", dir_action: "navigate" });
+                  if (origin) params.set("origin", origin);
+                  if (dest) params.set("destination", dest);
+                  if (waypoints.length > 0) params.set("waypoints", waypoints.join("|"));
+                  window.open(`https://www.google.com/maps/dir/?${params.toString()}`, "_blank");
+                }}
+              >
+                <HugeiconsIcon icon={Navigation03Icon} className="size-4" strokeWidth={1.5} />
+                Start Driving
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -730,6 +774,17 @@ export function CarpoolDetailView({
             </span> min
           </p>
         </div>
+        {!routeLoading && routeInfo && (
+          <div className="ml-auto text-[11px] text-muted-foreground">
+            Arrive by{" "}
+            <span className="font-medium text-foreground">
+              {new Date(Date.now() + routeInfo.durationMin * 60000).toLocaleTimeString("en-US", {
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Rider list (driver view) */}
@@ -759,6 +814,12 @@ export function CarpoolDetailView({
                     index={i}
                     leg={leg}
                     isChanged={changedRiderIds.has(rider.id)}
+                    legDurationMin={routeInfo?.legDurationsMin[i] ?? null}
+                    cumulativeMin={
+                      routeInfo?.legDurationsMin
+                        ? routeInfo.legDurationsMin.slice(0, i + 1).reduce((a, b) => a + b, 0)
+                        : null
+                    }
                   />
                 ))}
               </div>
