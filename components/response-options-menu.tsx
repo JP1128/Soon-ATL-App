@@ -1,10 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { MoreVerticalIcon, Delete02Icon, RefreshIcon } from "@hugeicons/core-free-icons";
-import { triggerFluidWave, dismissFluidWave } from "@/components/ui/fluid-wave-loader";
+import { triggerFluidWave } from "@/components/ui/fluid-wave-loader";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,7 +18,6 @@ interface ResponseOptionsMenuProps {
 
 export function ResponseOptionsMenu({ responseId, eventId }: ResponseOptionsMenuProps): React.ReactElement {
   const router = useRouter();
-  const [, startTransition] = useTransition();
 
   async function handleRemove(): Promise<void> {
     const res = await fetch(`/api/responses/${eventId}`, { method: "DELETE" });
@@ -37,10 +35,7 @@ export function ResponseOptionsMenu({ responseId, eventId }: ResponseOptionsMenu
         <DropdownMenuItem
           onClick={() => {
             triggerFluidWave();
-            startTransition(() => {
-              router.refresh();
-              dismissFluidWave();
-            });
+            router.refresh();
           }}
         >
           <HugeiconsIcon icon={RefreshIcon} className="size-4" strokeWidth={1.5} />

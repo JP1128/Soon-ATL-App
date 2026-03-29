@@ -22,6 +22,12 @@ import { GoogleMap, useJsApiLoader } from "@react-google-maps/api";
 import { GOOGLE_MAPS_LIBRARIES } from "@/lib/google-maps/constants";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { formatPhoneNumber } from "@/lib/utils";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -32,6 +38,8 @@ import {
   Clock01Icon,
   Road01Icon,
   DragDropVerticalIcon,
+  MapsIcon,
+  MoreVerticalIcon,
 } from "@hugeicons/core-free-icons";
 
 /* ── Types ─────────────────────────────────────────────────────── */
@@ -248,26 +256,32 @@ function SortableRiderItem({
       <span className="flex size-5 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
         {index + 1}
       </span>
-      <Avatar size="sm">
-        {rider.avatar_url && <AvatarImage src={rider.avatar_url} />}
-        <AvatarFallback>{getInitials(rider.full_name)}</AvatarFallback>
-      </Avatar>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <p className="text-sm font-medium leading-tight">{rider.full_name}</p>
-          {isChanged && <span className="size-1.5 rounded-full bg-foreground shrink-0" />}
+      <a
+        href={rider.phone_number ? `sms:${rider.phone_number}` : undefined}
+        className={`flex min-w-0 flex-1 items-center gap-3${rider.phone_number ? " cursor-pointer" : ""}`}
+        onClick={(e) => { if (!rider.phone_number) e.preventDefault(); }}
+      >
+        <Avatar size="sm">
+          {rider.avatar_url && <AvatarImage src={rider.avatar_url} />}
+          <AvatarFallback>{getInitials(rider.full_name)}</AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-medium leading-tight">{rider.full_name}</p>
+            {isChanged && <span className="size-1.5 rounded-full bg-foreground shrink-0" />}
+          </div>
+          {rider.phone_number && (
+            <p className="text-[11px] text-muted-foreground">
+              {formatPhoneNumber(rider.phone_number)}
+            </p>
+          )}
+          {addr && (
+            <p className="truncate text-[11px] text-muted-foreground">
+              {stripStateZip(addr)}
+            </p>
+          )}
         </div>
-        {rider.phone_number && (
-          <p className="text-[11px] text-muted-foreground">
-            {formatPhoneNumber(rider.phone_number)}
-          </p>
-        )}
-        {addr && (
-          <p className="truncate text-[11px] text-muted-foreground">
-            {stripStateZip(addr)}
-          </p>
-        )}
-      </div>
+      </a>
       <button
         {...attributes}
         {...listeners}
@@ -631,6 +645,46 @@ export function CarpoolDetailView({
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {legLabel}
         </p>
+        <div className="ml-auto">
+          <DropdownMenu>
+            <DropdownMenuTrigger className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary">
+              <HugeiconsIcon icon={MoreVerticalIcon} className="size-4" strokeWidth={1.5} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" side="bottom" sideOffset={4} className="min-w-0 w-auto">
+              <DropdownMenuItem
+                onClick={() => {
+                  const riderCoords = riders
+                    .map((r) => {
+                      const lat = leg === "before" ? r.pickup_lat : r.return_lat;
+                      const lng = leg === "before" ? r.pickup_lng : r.return_lng;
+                      return lat && lng ? `${lat},${lng}` : null;
+                    })
+                    .filter(Boolean);
+                  const origin = driverPickupLat && driverPickupLng
+                    ? `${driverPickupLat},${driverPickupLng}`
+                    : null;
+                  const dest = eventCoords
+                    ? `${eventCoords.lat},${eventCoords.lng}`
+                    : encodeURIComponent(location);
+                  const params = new URLSearchParams({ api: "1" });
+                  if (leg === "before") {
+                    if (origin) params.set("origin", origin);
+                    params.set("destination", dest as string);
+                    if (riderCoords.length > 0) params.set("waypoints", riderCoords.join("|"));
+                  } else {
+                    params.set("origin", dest as string);
+                    if (origin) params.set("destination", origin);
+                    if (riderCoords.length > 0) params.set("waypoints", riderCoords.join("|"));
+                  }
+                  window.open(`https://www.google.com/maps/dir/?${params.toString()}`, "_blank");
+                }}
+              >
+                <HugeiconsIcon icon={MapsIcon} className="size-4" strokeWidth={1.5} />
+                Open in Maps
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {/* Map */}
