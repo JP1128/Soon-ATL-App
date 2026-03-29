@@ -9,6 +9,39 @@ import { AiMagicIcon, ArrowDown01Icon, UserGroupIcon, Navigation03Icon } from "@
 import { triggerFluidWave, dismissFluidWave } from "@/components/ui/fluid-wave-loader";
 import { cn } from "@/lib/utils";
 
+/* ── ScrollReveal ──────────────────────────────────────────────── */
+
+function ScrollReveal({ children, scrollRoot }: { children: React.ReactNode; scrollRoot: React.RefObject<HTMLDivElement | null> }): React.ReactElement {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsVisible(entry.isIntersecting),
+      { root: scrollRoot.current, threshold: 0.1, rootMargin: "0px 0px -120px 0px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [scrollRoot]);
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        transform: isVisible ? "translateX(0)" : "translateX(1.5rem)",
+        opacity: isVisible ? 1 : 0,
+        transition: isVisible
+          ? "transform 300ms ease-out, opacity 300ms ease-out"
+          : "transform 150ms ease-in, opacity 150ms ease-in",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 interface ProfileInfo {
   id: string;
   full_name: string;
@@ -94,6 +127,29 @@ export function CarpoolAssistance({ eventId, initialResult }: CarpoolAssistanceP
   const [error, setError] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
   const [leg, setLeg] = useState<Leg>("before");
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollUp, setCanScrollUp] = useState(false);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+
+  const checkScroll = useCallback((): void => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollUp(el.scrollTop > 10);
+    setCanScrollDown(el.scrollTop + el.clientHeight < el.scrollHeight - 10);
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", checkScroll, { passive: true });
+    const ro = new ResizeObserver(checkScroll);
+    ro.observe(el);
+    for (const child of el.children) ro.observe(child);
+    return () => {
+      el.removeEventListener("scroll", checkScroll);
+      ro.disconnect();
+    };
+  }, [checkScroll, result, leg]);
 
   // Animation state
   const [animating, setAnimating] = useState(false);
@@ -383,14 +439,34 @@ export function CarpoolAssistance({ eventId, initialResult }: CarpoolAssistanceP
 
       {/* Scrollable results */}
       {result && (
-        <div className="flex-1 overflow-y-auto overscroll-contain scrollbar-none">
+        <>
+        {/* Top scroll indicator */}
+        <div
+          className={cn(
+            "flex-none flex justify-center h-5 items-center transition-opacity duration-200",
+            canScrollUp ? "opacity-100" : "opacity-0"
+          )}
+        >
+          <span className="text-[10px] tracking-[0.25em] text-muted-foreground/50">•••</span>
+        </div>
+
+        <div className="relative flex-1 min-h-0">
+        <div
+          ref={scrollRef}
+          className="absolute inset-0 overflow-y-auto overflow-x-hidden overscroll-contain scrollbar-none"
+          style={{
+            maskImage: `linear-gradient(to bottom, ${canScrollUp ? "transparent, black 1.5rem" : "black 0%"}, black calc(100% - 7.5rem), transparent calc(100% - 6rem), transparent)`,
+            WebkitMaskImage: `linear-gradient(to bottom, ${canScrollUp ? "transparent, black 1.5rem" : "black 0%"}, black calc(100% - 7.5rem), transparent calc(100% - 6rem), transparent)`,
+          }}
+        >
           <div className="space-y-1.5 pb-28">
             {displayAssignments.map((assignment) => {
               const driverProfile = profiles[assignment.driverId];
               if (!driverProfile) return null;
 
               return (
-                <div key={assignment.driverId} className="rounded-lg border px-3 py-2">
+                <ScrollReveal key={assignment.driverId} scrollRoot={scrollRef}>
+                <div className="rounded-lg border px-3 py-2">
                   <div className="flex items-center gap-2.5">
                     <Avatar size="sm">
                       {driverProfile.avatar_url && (
@@ -435,10 +511,23 @@ export function CarpoolAssistance({ eventId, initialResult }: CarpoolAssistanceP
                     </div>
                   )}
                 </div>
+                </ScrollReveal>
               );
             })}
           </div>
         </div>
+
+        {/* Bottom scroll indicator */}
+        <div
+          className={cn(
+            "absolute inset-x-0 bottom-24 z-10 flex justify-center pointer-events-none transition-opacity duration-200",
+            canScrollDown ? "opacity-100" : "opacity-0"
+          )}
+        >
+          <span className="text-[10px] tracking-[0.25em] text-muted-foreground/50">•••</span>
+        </div>
+        </div>
+        </>
       )}
     </div>
   );
