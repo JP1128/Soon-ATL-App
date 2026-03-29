@@ -392,6 +392,23 @@ export function CarpoolDetailView({
   const markersRef = useRef<google.maps.Marker[]>([]);
   const polylinesRef = useRef<google.maps.Polyline[]>([]);
 
+  // Sync local state when props change (e.g. from realtime refresh)
+  const ridersKey = (initialRiders ?? []).map((r) => r.id).join(",");
+  useEffect(() => {
+    const incoming = initialRiders ?? [];
+    setRiders(incoming);
+    setSavedOrder(incoming.map((r) => r.id));
+  }, [ridersKey]);
+
+  const sentRidersKey = initialPickupOrderSentRiders.join(",");
+  useEffect(() => {
+    setSentRiders(new Set<string>(initialPickupOrderSentRiders));
+  }, [sentRidersKey]);
+
+  useEffect(() => {
+    setLastSentAt(initialPickupOrderSentAt);
+  }, [initialPickupOrderSentAt]);
+
   // Geocode event location
   useEffect(() => {
     if (!mapsLoaded || !location) return;
