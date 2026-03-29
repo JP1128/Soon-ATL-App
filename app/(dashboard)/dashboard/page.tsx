@@ -39,6 +39,7 @@ export default async function DashboardPage(): Promise<React.ReactElement> {
     afterRiders: number;
     hasUnassignedRiders: boolean;
     unassignedRiderCount: number;
+    hasUnsentChanges: boolean;
   } | undefined;
 
   if (activeEvent && activeEvent.status === "open") {
@@ -51,9 +52,9 @@ export default async function DashboardPage(): Promise<React.ReactElement> {
 
     const { data: carpools } = await supabase
       .from("carpools")
-      .select("driver_id, carpool_riders(rider_id)")
+      .select("driver_id, leg, carpool_riders(rider_id, pickup_order)")
       .eq("event_id", activeEvent.id) as {
-      data: { driver_id: string; carpool_riders: { rider_id: string }[] }[] | null;
+      data: { driver_id: string; leg: string; carpool_riders: { rider_id: string; pickup_order: number }[] }[] | null;
     };
 
     const rows = responses ?? [];
@@ -67,6 +68,35 @@ export default async function DashboardPage(): Promise<React.ReactElement> {
     const unassignedBeforeCount = beforeRiderIds.filter((id) => !assignedRiderIds.has(id)).length;
     const unassignedAfterCount = afterRiderIds.filter((id) => !assignedRiderIds.has(id)).length;
 
+    // Check for unsent changes by comparing live carpools with published snapshot
+    const published = activeEvent.published_carpools;
+    let hasUnsentChanges = false;
+    const liveCarpoolRows = carpools ?? [];
+    if (!published) {
+      hasUnsentChanges = liveCarpoolRows.length > 0;
+    } else {
+      for (const legKey of ["before", "after"] as const) {
+        const legCarpools = liveCarpoolRows.filter((c) => c.leg === legKey);
+        const legPublished = published[legKey] ?? [];
+        if (legCarpools.length !== legPublished.length) { hasUnsentChanges = true; break; }
+        const liveMap = new Map<string, string[]>();
+        for (const c of legCarpools) {
+          liveMap.set(c.driver_id, [...c.carpool_riders].sort((a, b) => a.pickup_order - b.pickup_order).map((r) => r.rider_id));
+        }
+        const pubMap = new Map<string, string[]>();
+        for (const c of legPublished) {
+          pubMap.set(c.driver_id, [...c.riders].sort((a, b) => a.pickup_order - b.pickup_order).map((r) => r.rider_id));
+        }
+        for (const [driverId, liveRiders] of liveMap) {
+          const pubRiders = pubMap.get(driverId);
+          if (!pubRiders || liveRiders.length !== pubRiders.length || liveRiders.some((id, i) => id !== pubRiders[i])) {
+            hasUnsentChanges = true; break;
+          }
+        }
+        if (hasUnsentChanges) break;
+      }
+    }
+
     stats = {
       total: rows.length,
       drivers: rows.filter((r) => r.role === "driver").length,
@@ -78,6 +108,7 @@ export default async function DashboardPage(): Promise<React.ReactElement> {
       afterRiders: afterRiderIds.length,
       hasUnassignedRiders: hasUnassignedBefore || hasUnassignedAfter,
       unassignedRiderCount: unassignedBeforeCount + unassignedAfterCount,
+      hasUnsentChanges,
     };
   }
 

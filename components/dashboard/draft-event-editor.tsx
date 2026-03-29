@@ -6,13 +6,14 @@ import { Button } from "@/components/ui/button";
 import { triggerFluidWave, dismissFluidWave } from "@/components/ui/fluid-wave-loader";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { TimeWheelPicker } from "@/components/ui/time-wheel-picker";
 import { DatePickerOverlay } from "@/components/ui/date-picker-overlay";
 import { AddressPickerOverlay } from "@/components/ui/address-picker-overlay";
 import type { AddressResult } from "@/components/ui/address-picker-overlay";
 import { ManualAddressOverlay } from "@/components/ui/manual-address-overlay";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { MapsSearchIcon, TextIcon, FloppyDiskIcon, Delete02Icon, SentIcon, Edit02Icon, Car01Icon } from "@hugeicons/core-free-icons";
+import { MapsSearchIcon, TextIcon, FloppyDiskIcon, Delete02Icon, SentIcon, Edit02Icon, Car01Icon, AiMagicIcon } from "@hugeicons/core-free-icons";
 import type { Event } from "@/types/database";
 import { EditEventDialog } from "@/components/dashboard/edit-event-dialog";
 
@@ -27,6 +28,7 @@ interface EventStats {
   afterRiders: number;
   hasUnassignedRiders: boolean;
   unassignedRiderCount: number;
+  hasUnsentChanges: boolean;
 }
 
 interface DraftEventEditorProps {
@@ -197,9 +199,13 @@ export function DraftEventEditor({ event, stats }: DraftEventEditorProps): React
               </div>
             )}
             <div className="space-y-2">
-              <Button variant="outline" onClick={() => setEditOpen(true)} className="w-full rounded-xl">
-                <HugeiconsIcon icon={Edit02Icon} className="size-4" />
-                Edit Event
+              <Button
+                variant="outline"
+                className="w-full rounded-xl"
+                onClick={() => { triggerFluidWave(); router.push(`/dashboard/events/${event.id}/assistance`); }}
+              >
+                <HugeiconsIcon icon={AiMagicIcon} className="size-4" />
+                Carpool Assistance
               </Button>
               <Button
                 variant="outline"
@@ -208,14 +214,24 @@ export function DraftEventEditor({ event, stats }: DraftEventEditorProps): React
                 onClick={() => { triggerFluidWave(); router.push(`/dashboard/events/${event.id}/carpools`); }}
               >
                 <HugeiconsIcon icon={Car01Icon} className="size-4" />
-                Carpool Assignment
+                Carpool Audit
+                {stats?.hasUnsentChanges && (
+                  <span className="size-2 rounded-full bg-foreground" />
+                )}
                 {stats && stats.unassignedRiderCount > 0 && (
                   <span className="rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
                     {stats.unassignedRiderCount}
                   </span>
                 )}
               </Button>
-              <Button onClick={handleDelete} variant="outline" className="w-full rounded-xl text-destructive hover:text-destructive">
+            </div>
+            <Separator />
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={() => setEditOpen(true)} className="flex-1 rounded-xl">
+                <HugeiconsIcon icon={Edit02Icon} className="size-4" />
+                Edit Event
+              </Button>
+              <Button onClick={handleDelete} variant="outline" className="flex-1 rounded-xl text-destructive hover:text-destructive">
                 <HugeiconsIcon icon={Delete02Icon} className="size-4" />
                 Delete Event
               </Button>

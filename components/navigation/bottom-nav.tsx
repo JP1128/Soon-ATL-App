@@ -87,7 +87,8 @@ export function BottomNav({
     // Exact match first
     if (pageNames[pathname] !== undefined) return pageNames[pathname];
     // Dynamic routes
-    if (pathname.includes("/carpools")) return "Carpool Assignment";
+    if (pathname.includes("/carpools")) return "Carpool Audit";
+    if (pathname.includes("/assistance")) return "Carpool Assistance";
     if (pathname.startsWith("/dashboard/events/")) return "Event Details";
     if (pathname.startsWith("/dashboard/profile")) return "Profile";
     if (pathname.startsWith("/event/")) return "";

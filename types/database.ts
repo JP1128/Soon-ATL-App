@@ -35,6 +35,7 @@ export interface Event {
   sent_at: string | null;
   carpools_sent_at: string | null;
   published_carpools: { before: PublishedCarpoolEntry[]; after: PublishedCarpoolEntry[] } | null;
+  last_assistance: Record<string, unknown> | null;
   created_at: string;
 }
 

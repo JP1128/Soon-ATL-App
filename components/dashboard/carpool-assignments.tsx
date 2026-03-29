@@ -207,34 +207,46 @@ function hasChangesFromPublished(
 
   // Check each leg independently
   for (const legKey of ["before", "after"] as const) {
-    const legCarpools = liveCarpools.filter((c) => c.leg === legKey);
-    const legPublished = published[legKey] ?? [];
+    if (legHasChangesFromPublished(liveCarpools, published, legKey)) return true;
+  }
 
-    const liveMap = new Map<string, string[]>();
-    for (const c of legCarpools) {
-      const riderIds = [...c.carpool_riders]
-        .sort((a, b) => a.pickup_order - b.pickup_order)
-        .map((r) => r.rider_id);
-      liveMap.set(c.driver_id, riderIds);
-    }
+  return false;
+}
 
-    const pubMap = new Map<string, string[]>();
-    for (const c of legPublished) {
-      const riderIds = [...c.riders]
-        .sort((a, b) => a.pickup_order - b.pickup_order)
-        .map((r) => r.rider_id);
-      pubMap.set(c.driver_id, riderIds);
-    }
+function legHasChangesFromPublished(
+  liveCarpools: CarpoolRow[],
+  published: { before: PublishedCarpoolEntry[]; after: PublishedCarpoolEntry[] } | null,
+  legKey: "before" | "after",
+): boolean {
+  const legCarpools = liveCarpools.filter((c) => c.leg === legKey);
+  if (!published) return legCarpools.length > 0;
 
-    if (liveMap.size !== pubMap.size) return true;
+  const legPublished = published[legKey] ?? [];
 
-    for (const [driverId, liveRiders] of liveMap) {
-      const pubRiders = pubMap.get(driverId);
-      if (!pubRiders) return true;
-      if (liveRiders.length !== pubRiders.length) return true;
-      for (let i = 0; i < liveRiders.length; i++) {
-        if (liveRiders[i] !== pubRiders[i]) return true;
-      }
+  const liveMap = new Map<string, string[]>();
+  for (const c of legCarpools) {
+    const riderIds = [...c.carpool_riders]
+      .sort((a, b) => a.pickup_order - b.pickup_order)
+      .map((r) => r.rider_id);
+    liveMap.set(c.driver_id, riderIds);
+  }
+
+  const pubMap = new Map<string, string[]>();
+  for (const c of legPublished) {
+    const riderIds = [...c.riders]
+      .sort((a, b) => a.pickup_order - b.pickup_order)
+      .map((r) => r.rider_id);
+    pubMap.set(c.driver_id, riderIds);
+  }
+
+  if (liveMap.size !== pubMap.size) return true;
+
+  for (const [driverId, liveRiders] of liveMap) {
+    const pubRiders = pubMap.get(driverId);
+    if (!pubRiders) return true;
+    if (liveRiders.length !== pubRiders.length) return true;
+    for (let i = 0; i < liveRiders.length; i++) {
+      if (liveRiders[i] !== pubRiders[i]) return true;
     }
   }
 
@@ -285,6 +297,11 @@ export function CarpoolAssignments({
     () => hasChangesFromPublished(carpools, published),
     [carpools, published],
   );
+
+  const unsentPerLeg = useMemo(() => ({
+    before: legHasChangesFromPublished(carpools, published, "before"),
+    after: legHasChangesFromPublished(carpools, published, "after"),
+  }), [carpools, published]);
 
   /** Set of user IDs (drivers + riders) whose assignment changed vs published snapshot for the current leg. */
   const changedUserIds = useMemo(() => {
@@ -341,6 +358,61 @@ export function CarpoolAssignments({
 
     return changed;
   }, [carpools, published, leg]);
+
+  /** Changed drivers and riders across both legs (for the review overlay). */
+  const changedProfiles = useMemo(() => {
+    const changedAll = new Set<string>();
+    for (const legKey of ["before", "after"] as const) {
+      const legCarpools = carpools.filter((c) => c.leg === legKey);
+      const legPub = published?.[legKey] ?? null;
+      if (!legPub) {
+        for (const c of legCarpools) {
+          changedAll.add(c.driver_id);
+          for (const r of c.carpool_riders) changedAll.add(r.rider_id);
+        }
+        continue;
+      }
+      const liveMap = new Map<string, string[]>();
+      for (const c of legCarpools) {
+        liveMap.set(c.driver_id, [...c.carpool_riders].sort((a, b) => a.pickup_order - b.pickup_order).map((r) => r.rider_id));
+      }
+      const pubMap = new Map<string, string[]>();
+      for (const c of legPub) {
+        pubMap.set(c.driver_id, [...c.riders].sort((a, b) => a.pickup_order - b.pickup_order).map((r) => r.rider_id));
+      }
+      for (const [dId, lr] of liveMap) {
+        const pr = pubMap.get(dId);
+        if (!pr || lr.length !== pr.length || lr.some((id, i) => id !== pr[i])) {
+          changedAll.add(dId);
+          for (const rid of lr) changedAll.add(rid);
+          if (pr) for (const rid of pr) changedAll.add(rid);
+        }
+      }
+      for (const [dId, pr] of pubMap) {
+        if (!liveMap.has(dId)) {
+          changedAll.add(dId);
+          for (const rid of pr) changedAll.add(rid);
+        }
+      }
+    }
+    // Split into drivers and riders based on response roles
+    const driverIds = new Set<string>();
+    const riderIds = new Set<string>();
+    for (const r of responses) {
+      if (changedAll.has(r.user_id)) {
+        if (r.before_role === "driver" || r.after_role === "driver") driverIds.add(r.user_id);
+        if (r.before_role === "rider" || r.after_role === "rider") riderIds.add(r.user_id);
+      }
+    }
+    const toProfile = (uid: string): ProfileData | null => {
+      const r = responses.find((resp) => resp.user_id === uid);
+      return r?.profiles ?? null;
+    };
+    return {
+      drivers: [...driverIds].map(toProfile).filter((p): p is ProfileData => p !== null),
+      riders: [...riderIds].map(toProfile).filter((p): p is ProfileData => p !== null),
+    };
+  }, [carpools, published, responses]);
 
   const checkScroll = useCallback((): void => {
     const el = scrollRef.current;
@@ -915,8 +987,8 @@ export function CarpoolAssignments({
       <div className="flex-none space-y-5 pb-4">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="text-lg font-semibold">Carpool Assignment</h1>
-          <Button size="sm" onClick={() => setShowSendConfirm(true)} disabled={!hasUnsentChanges}>
+          <h1 className="text-lg font-semibold">Carpool Audit</h1>
+          <Button size="sm" className="rounded-xl" onClick={() => setShowSendConfirm(true)} disabled={!hasUnsentChanges}>
             <HugeiconsIcon icon={SentIcon} className="size-4" strokeWidth={1.5} />
             {sentAt ? "Review Update" : "Review"}
           </Button>
@@ -938,9 +1010,11 @@ export function CarpoolAssignments({
               aria-label="Before event"
             >
               Before
-              {unassignedCounts.before > 0 && (
+              {unassignedCounts.before > 0 ? (
                 <span className="size-1.5 rounded-full bg-destructive ml-1" />
-              )}
+              ) : unsentPerLeg.before ? (
+                <span className="size-1.5 rounded-full bg-foreground ml-1" />
+              ) : null}
             </button>
             <button
               type="button"
@@ -954,9 +1028,11 @@ export function CarpoolAssignments({
               aria-label="After event"
             >
               After
-              {unassignedCounts.after > 0 && (
+              {unassignedCounts.after > 0 ? (
                 <span className="size-1.5 rounded-full bg-destructive ml-1" />
-              )}
+              ) : unsentPerLeg.after ? (
+                <span className="size-1.5 rounded-full bg-foreground ml-1" />
+              ) : null}
             </button>
           </div>
 
@@ -1403,6 +1479,7 @@ export function CarpoolAssignments({
         sending={sending}
         drivers={drivers}
         eventCoords={eventCoords}
+        changedProfiles={changedProfiles}
       />
     </div>
   );
@@ -2139,6 +2216,7 @@ function SendConfirmOverlay({
   sending,
   drivers,
   eventCoords,
+  changedProfiles,
 }: {
   open: boolean;
   onClose: () => void;
@@ -2148,6 +2226,7 @@ function SendConfirmOverlay({
   sending: boolean;
   drivers: DriverEntry[];
   eventCoords: { lat: number; lng: number } | null;
+  changedProfiles: { drivers: ProfileData[]; riders: ProfileData[] };
 }): React.ReactElement | null {
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -2431,6 +2510,51 @@ function SendConfirmOverlay({
                     ? "There is 1 unassigned rider."
                     : `There are ${unassignedRiders.length} unassigned riders.`}
                 </p>
+              </div>
+            )}
+
+            {isUpdate && (changedProfiles.drivers.length > 0 || changedProfiles.riders.length > 0) && (
+              <div className="space-y-2">
+                {changedProfiles.drivers.length > 0 && (
+                  <div>
+                    <p className="text-[11px] font-medium text-muted-foreground mb-1">
+                      {changedProfiles.drivers.length === 1 ? "1 driver affected" : `${changedProfiles.drivers.length} drivers affected`}
+                    </p>
+                    <div className="flex items-center -space-x-2">
+                      {changedProfiles.drivers.slice(0, 8).map((p) => (
+                        <Avatar key={p.id} size="sm" className="ring-2 ring-popover">
+                          {p.avatar_url && <AvatarImage src={p.avatar_url} alt={p.full_name} />}
+                          <AvatarFallback>{getInitials(p.full_name)}</AvatarFallback>
+                        </Avatar>
+                      ))}
+                      {changedProfiles.drivers.length > 8 && (
+                        <div className="flex items-center justify-center size-8 rounded-full bg-secondary text-[10px] font-medium text-muted-foreground ring-2 ring-popover">
+                          +{changedProfiles.drivers.length - 8}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {changedProfiles.riders.length > 0 && (
+                  <div>
+                    <p className="text-[11px] font-medium text-muted-foreground mb-1">
+                      {changedProfiles.riders.length === 1 ? "1 rider affected" : `${changedProfiles.riders.length} riders affected`}
+                    </p>
+                    <div className="flex items-center -space-x-2">
+                      {changedProfiles.riders.slice(0, 8).map((p) => (
+                        <Avatar key={p.id} size="sm" className="ring-2 ring-popover">
+                          {p.avatar_url && <AvatarImage src={p.avatar_url} alt={p.full_name} />}
+                          <AvatarFallback>{getInitials(p.full_name)}</AvatarFallback>
+                        </Avatar>
+                      ))}
+                      {changedProfiles.riders.length > 8 && (
+                        <div className="flex items-center justify-center size-8 rounded-full bg-secondary text-[10px] font-medium text-muted-foreground ring-2 ring-popover">
+                          +{changedProfiles.riders.length - 8}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
