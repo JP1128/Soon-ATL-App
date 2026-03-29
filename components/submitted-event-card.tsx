@@ -132,6 +132,19 @@ export function SubmittedEventCard({
     else setAfterSentRecently(true);
   }, []);
 
+  // Reset sentRecently flags when server data actually changes (e.g. organizer modifies assignments)
+  const beforeRiderIds = beforeAssignedRiders.map((r) => r.id).join(",");
+  const beforeSentRiderIds = beforePickupOrderSentRiders.join(",");
+  useEffect(() => {
+    setBeforeSentRecently(false);
+  }, [beforeRiderIds, beforeSentRiderIds]);
+
+  const afterRiderIds = afterAssignedRiders.map((r) => r.id).join(",");
+  const afterSentRiderIds = afterPickupOrderSentRiders.join(",");
+  useEffect(() => {
+    setAfterSentRecently(false);
+  }, [afterRiderIds, afterSentRiderIds]);
+
   // Driver indicator: show dot when riders haven't been sent pickup order or order has changed
   const hasUnsentBeforeRiders = !beforeSentRecently && (() => {
     if (beforeAssignedRiders.length === 0) return false;
