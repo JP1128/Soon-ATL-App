@@ -78,6 +78,7 @@ function AddressPickerOverlay({
 
   const [recentAddresses, setRecentAddresses] = React.useState<AddressResult[]>([])
   const [keyboardOpen, setKeyboardOpen] = React.useState(false)
+  const [viewportTop, setViewportTop] = React.useState(0)
 
   const searchInputRef = React.useRef<HTMLInputElement>(null)
   const sessionTokenRef = React.useRef<google.maps.places.AutocompleteSessionToken | null>(null)
@@ -110,6 +111,7 @@ function AddressPickerOverlay({
     } else {
       setVisible(false)
       setKeyboardOpen(false)
+      setViewportTop(0)
       const timer = setTimeout(() => setMounted(false), 200)
       return () => clearTimeout(timer)
     }
@@ -122,13 +124,19 @@ function AddressPickerOverlay({
     if (!vv) return
 
     const threshold = window.innerHeight * 0.25
-    function onResize(): void {
+    function onViewportChange(): void {
       const heightDiff = window.innerHeight - (vv?.height ?? window.innerHeight)
-      setKeyboardOpen(heightDiff > threshold)
+      const isOpen = heightDiff > threshold
+      setKeyboardOpen(isOpen)
+      setViewportTop(isOpen ? (vv?.offsetTop ?? 0) : 0)
     }
 
-    vv.addEventListener("resize", onResize)
-    return () => vv.removeEventListener("resize", onResize)
+    vv.addEventListener("resize", onViewportChange)
+    vv.addEventListener("scroll", onViewportChange)
+    return () => {
+      vv.removeEventListener("resize", onViewportChange)
+      vv.removeEventListener("scroll", onViewportChange)
+    }
   }, [open])
 
   // Lock body scroll
@@ -268,9 +276,10 @@ function AddressPickerOverlay({
       <div
         className={cn(
           "absolute inset-x-0 flex justify-center pointer-events-none transition-all duration-200",
-          keyboardOpen ? "top-[5%]" : "top-1/2 -translate-y-1/2",
+          keyboardOpen ? "" : "top-1/2 -translate-y-1/2",
           visible ? "opacity-100 scale-100" : "opacity-0 scale-95"
         )}
+        style={keyboardOpen ? { top: `calc(${viewportTop}px + 5%)` } : undefined}
       >
         <div className="pointer-events-auto w-full max-w-[calc(100%-2rem)] sm:max-w-sm rounded-4xl bg-popover p-6 ring-1 ring-foreground/5">
           {title && (

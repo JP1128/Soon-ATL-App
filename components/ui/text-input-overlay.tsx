@@ -34,6 +34,8 @@ function TextInputOverlay({
   const [mounted, setMounted] = React.useState(false)
   const [visible, setVisible] = React.useState(false)
   const [draft, setDraft] = React.useState(initialValue)
+  const [keyboardOpen, setKeyboardOpen] = React.useState(false)
+  const [viewportTop, setViewportTop] = React.useState(0)
   const inputRef = React.useRef<HTMLInputElement | HTMLTextAreaElement>(null)
 
   React.useEffect(() => {
@@ -45,10 +47,34 @@ function TextInputOverlay({
       })
     } else {
       setVisible(false)
+      setKeyboardOpen(false)
+      setViewportTop(0)
       const timer = setTimeout(() => setMounted(false), 200)
       return () => clearTimeout(timer)
     }
   }, [open, initialValue])
+
+  // Detect keyboard open/close via visualViewport and track offset
+  React.useEffect(() => {
+    if (!open) return
+    const vv = window.visualViewport
+    if (!vv) return
+
+    const threshold = window.innerHeight * 0.25
+    function onViewportChange(): void {
+      const heightDiff = window.innerHeight - (vv?.height ?? window.innerHeight)
+      const isOpen = heightDiff > threshold
+      setKeyboardOpen(isOpen)
+      setViewportTop(isOpen ? (vv?.offsetTop ?? 0) : 0)
+    }
+
+    vv.addEventListener("resize", onViewportChange)
+    vv.addEventListener("scroll", onViewportChange)
+    return () => {
+      vv.removeEventListener("resize", onViewportChange)
+      vv.removeEventListener("scroll", onViewportChange)
+    }
+  }, [open])
 
   React.useEffect(() => {
     if (open) {
@@ -87,9 +113,11 @@ function TextInputOverlay({
       />
       <div
         className={cn(
-          "absolute inset-x-0 top-[20%] flex justify-center pointer-events-none transition-all duration-100",
+          "absolute inset-x-0 flex justify-center pointer-events-none transition-all duration-200",
+          keyboardOpen ? "" : "top-1/2 -translate-y-1/2",
           visible ? "opacity-100 scale-100" : "opacity-0 scale-95"
         )}
+        style={keyboardOpen ? { top: `calc(${viewportTop}px + 5%)` } : undefined}
       >
         <div className="pointer-events-auto w-full max-w-[calc(100%-2rem)] sm:max-w-sm rounded-4xl bg-popover p-6 ring-1 ring-foreground/5">
           {title && (
