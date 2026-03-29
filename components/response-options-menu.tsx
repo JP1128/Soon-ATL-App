@@ -2,8 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { MoreVerticalIcon, Delete02Icon, RefreshIcon } from "@hugeicons/core-free-icons";
-import { triggerFluidWave } from "@/components/ui/fluid-wave-loader";
+import { MoreVerticalIcon, Delete02Icon } from "@hugeicons/core-free-icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,15 +31,6 @@ export function ResponseOptionsMenu({ responseId, eventId }: ResponseOptionsMenu
         <HugeiconsIcon icon={MoreVerticalIcon} className="size-4" strokeWidth={1.5} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" side="bottom" sideOffset={4} className="min-w-0 w-auto">
-        <DropdownMenuItem
-          onClick={() => {
-            triggerFluidWave();
-            router.refresh();
-          }}
-        >
-          <HugeiconsIcon icon={RefreshIcon} className="size-4" strokeWidth={1.5} />
-          Refresh
-        </DropdownMenuItem>
         <DropdownMenuItem
           variant="destructive"
           onClick={handleRemove}

@@ -4,6 +4,8 @@ import { formatDisplayAddress } from "@/lib/utils";
 import { LoginButton } from "@/components/login-button";
 import { ActiveEventCard } from "@/components/active-event-card";
 import { SubmittedEventCard } from "@/components/submitted-event-card";
+import { PullToRefresh } from "@/components/pull-to-refresh";
+import { RealtimeRefresh } from "@/components/realtime-refresh";
 import type { Event, Profile, Response, PublishedCarpoolEntry } from "@/types/database";
 
 type UserEventStatus = "needs-response" | "submitted" | "ride-assigned";
@@ -184,7 +186,8 @@ export default async function HomePage(): Promise<React.ReactElement> {
   const hasSubmitted = userStatus === "submitted" || userStatus === "ride-assigned";
 
   return (
-    <div className={`flex w-full max-w-lg flex-col items-center px-6 ${hasSubmitted ? "flex-1 pt-6 pb-4" : "flex-1 justify-center"}`}>
+    <PullToRefresh className={`flex w-full max-w-lg flex-col items-center overflow-hidden px-6 ${hasSubmitted ? "flex-1 pt-6 pb-4" : "flex-1 justify-center"}`}>
+      {user && activeEvent && <RealtimeRefresh eventId={activeEvent.id} />}
       {/* Brand — hidden after submission */}
       {!hasSubmitted && (
         <>
@@ -198,7 +201,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
       )}
 
       {/* Main content area */}
-      <div className={`${hasSubmitted ? "flex-1" : "mt-6 tall:mt-8 xtall:mt-10"} flex w-full flex-col items-center gap-4`}>
+      <div className={`${hasSubmitted ? "min-h-0 flex-1 overflow-hidden" : "mt-6 tall:mt-8 xtall:mt-10"} flex w-full flex-col items-center gap-4`}>
         {!user && <LoginButton />}
         {user && activeEvent && hasSubmitted && userResponse && (
           <SubmittedEventCard
@@ -251,6 +254,6 @@ export default async function HomePage(): Promise<React.ReactElement> {
           <p className="text-sm text-muted-foreground">No open events right now.</p>
         )}
       </div>
-    </div>
+    </PullToRefresh>
   );
 }

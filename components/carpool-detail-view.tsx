@@ -32,6 +32,8 @@ import { formatPhoneNumber } from "@/lib/utils";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowLeft01Icon,
+  Call02Icon,
+  Copy01Icon,
   SentIcon,
   Tick02Icon,
   UndoIcon,
@@ -39,6 +41,7 @@ import {
   Road01Icon,
   DragDropVerticalIcon,
   MapsIcon,
+  Message01Icon,
   MessageMultiple01Icon,
   MoreVerticalIcon,
   Navigation03Icon,
@@ -261,42 +264,60 @@ function SortableRiderItem({
         isDragging ? "bg-secondary shadow-sm" : ""
       }`}
     >
-      <span className="flex size-5 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
-        {index + 1}
-      </span>
-      <a
-        href={rider.phone_number ? `sms:${rider.phone_number}` : undefined}
-        className={`flex min-w-0 flex-1 items-center gap-3${rider.phone_number ? " cursor-pointer" : ""}`}
-        onClick={(e) => { if (!rider.phone_number) e.preventDefault(); }}
-      >
-        <Avatar size="sm">
-          {rider.avatar_url && <AvatarImage src={rider.avatar_url} />}
-          <AvatarFallback>{getInitials(rider.full_name)}</AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <p className="text-sm font-medium leading-tight">{rider.full_name}</p>
-            {isChanged && <span className="size-1.5 rounded-full bg-foreground shrink-0" />}
-          </div>
-          {rider.phone_number && (
-            <p className="text-[11px] text-muted-foreground">
-              {formatPhoneNumber(rider.phone_number)}
-            </p>
-          )}
-          {addr && (
-            <p className="truncate text-[11px] text-muted-foreground">
-              {stripStateZip(addr)}
-            </p>
-          )}
-          {legDurationMin != null && (
-            <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground">
-              <span>{legDurationMin} min from prev</span>
-              <span className="text-muted-foreground/40">·</span>
-              <span>ETA {cumulativeMin} min</span>
+      <DropdownMenu>
+        <DropdownMenuTrigger className="flex min-w-0 flex-1 items-center gap-3 cursor-pointer rounded-md -mx-1 px-1 transition-colors hover:bg-secondary/60">
+            <Avatar size="sm">
+              {rider.avatar_url && <AvatarImage src={rider.avatar_url} />}
+              <AvatarFallback>{getInitials(rider.full_name)}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1 text-left">
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-medium leading-tight">{rider.full_name}</p>
+                {isChanged && <span className="size-1.5 rounded-full bg-foreground shrink-0" />}
+              </div>
+              {rider.phone_number && (
+                <p className="text-[11px] text-muted-foreground">
+                  {formatPhoneNumber(rider.phone_number)}
+                </p>
+              )}
+              {addr && (
+                <p className="truncate text-[11px] text-muted-foreground">
+                  {stripStateZip(addr)}
+                </p>
+              )}
+              {legDurationMin != null && cumulativeMin != null && (
+                <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground">
+                  <span>{legDurationMin} min from prev</span>
+                  <span className="text-muted-foreground/40">·</span>
+                  <span>ETA {new Date(Date.now() + cumulativeMin * 60000).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </a>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" side="bottom" sideOffset={4} className="min-w-0 w-auto">
+          <DropdownMenuItem
+            disabled={!rider.phone_number}
+            onClick={() => { if (rider.phone_number) window.open(`sms:${rider.phone_number}`, "_self"); }}
+          >
+            <HugeiconsIcon icon={Message01Icon} className="size-4" strokeWidth={1.5} />
+            Message
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={!rider.phone_number}
+            onClick={() => { if (rider.phone_number) window.open(`tel:${rider.phone_number}`, "_self"); }}
+          >
+            <HugeiconsIcon icon={Call02Icon} className="size-4" strokeWidth={1.5} />
+            Call
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={!addr}
+            onClick={() => { if (addr) navigator.clipboard.writeText(addr); }}
+          >
+            <HugeiconsIcon icon={Copy01Icon} className="size-4" strokeWidth={1.5} />
+            Copy Address
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <button
         {...attributes}
         {...listeners}

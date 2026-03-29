@@ -121,7 +121,6 @@ export function SubmittedEventCard({
   const [view, setView] = useState<"main" | "detail">("main");
   const [activeLeg, setActiveLeg] = useState<"before" | "after">("before");
   const [editLeg, setEditLeg] = useState<"before" | "after" | null>(null);
-  const [lockedHeight, setLockedHeight] = useState<number | undefined>(undefined);
   const mainRef = useRef<HTMLDivElement>(null);
 
   // Local state for sent riders and current rider order (updated when driver sends from detail view)
@@ -192,9 +191,6 @@ export function SubmittedEventCard({
   }, [afterAssignedDriver, afterRiderSeenKey]);
 
   const showDetail = (leg: "before" | "after"): void => {
-    if (mainRef.current) {
-      setLockedHeight(mainRef.current.offsetHeight);
-    }
     setActiveLeg(leg);
     setView("detail");
     // If rider is viewing their driver assignment, mark as seen
@@ -206,7 +202,6 @@ export function SubmittedEventCard({
   };
 
   const showMain = (): void => {
-    setLockedHeight(undefined);
     setView("main");
   };
 
@@ -234,10 +229,9 @@ export function SubmittedEventCard({
   return (
     <div
       className="relative flex w-full flex-1 flex-col overflow-hidden rounded-2xl border text-left"
-      style={{ minHeight: lockedHeight }}
     >
       <motion.div
-        className="relative flex min-h-full flex-1"
+        className="relative flex min-h-0 flex-1 overflow-hidden"
         style={{ width: "200%" }}
         animate={{ x: view === "main" ? "0%" : "-50%" }}
         transition={{ type: "tween", duration: 0.3, ease: "easeOut" }}
@@ -499,7 +493,7 @@ export function SubmittedEventCard({
         </div>
 
         {/* Detail view */}
-        <div className="flex w-1/2 flex-col">
+        <div className="flex w-1/2 min-h-0 flex-col overflow-hidden">
             <CarpoolDetailView
               title={title}
               location={location}
