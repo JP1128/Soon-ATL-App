@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getEffectiveUser } from "@/lib/impersonate";
 
 export async function GET(): Promise<NextResponse> {
   const supabase = await createClient();
@@ -11,10 +12,13 @@ export async function GET(): Promise<NextResponse> {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const effectiveUser = await getEffectiveUser();
+  const effectiveUserId = effectiveUser?.effectiveUserId ?? user.id;
+
   const { data, error } = await supabase
     .from("profiles")
     .select("*")
-    .eq("id", user.id)
+    .eq("id", effectiveUserId)
     .single();
 
   if (error || !data) {
@@ -33,6 +37,9 @@ export async function PATCH(request: Request): Promise<NextResponse> {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const effectiveUser = await getEffectiveUser();
+  const effectiveUserId = effectiveUser?.effectiveUserId ?? user.id;
 
   const body = await request.json();
   const allowedFields = ["full_name", "phone_number"];
@@ -60,7 +67,7 @@ export async function PATCH(request: Request): Promise<NextResponse> {
   const { data, error } = await supabase
     .from("profiles")
     .update(updates)
-    .eq("id", user.id)
+    .eq("id", effectiveUserId)
     .select()
     .single();
 

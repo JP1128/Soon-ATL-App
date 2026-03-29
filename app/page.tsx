@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getEffectiveUser } from "@/lib/impersonate";
 import { formatDisplayAddress } from "@/lib/utils";
 import { LoginButton } from "@/components/login-button";
 import { ActiveEventCard } from "@/components/active-event-card";
@@ -13,12 +14,15 @@ export default async function HomePage(): Promise<React.ReactElement> {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const effectiveUser = await getEffectiveUser();
+  const effectiveUserId = effectiveUser?.effectiveUserId ?? user?.id;
+
   let profile: Profile | null = null;
-  if (user) {
+  if (user && effectiveUserId) {
     const { data } = await supabase
       .from("profiles")
       .select("*")
-      .eq("id", user.id)
+      .eq("id", effectiveUserId)
       .single() as { data: Profile | null };
     profile = data;
   }
@@ -54,7 +58,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
       .from("responses")
       .select("id, role, before_role, after_role, pickup_address, pickup_lat, pickup_lng, return_address, return_lat, return_lng, available_seats, departure_time")
       .eq("event_id", activeEvent.id)
-      .eq("user_id", user.id)
+      .eq("user_id", effectiveUserId!)
       .maybeSingle() as { data: Pick<Response, "id" | "role" | "before_role" | "after_role" | "pickup_address" | "pickup_lat" | "pickup_lng" | "return_address" | "return_lat" | "return_lng" | "available_seats" | "departure_time"> | null };
     userResponse = response;
 
@@ -129,7 +133,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
           if (legEntries.length === 0) continue;
 
           // Check if user is a driver in this leg
-          const driverEntry = legEntries.find((c) => c.driver_id === user.id);
+          const driverEntry = legEntries.find((c) => c.driver_id === effectiveUserId);
           if (driverEntry) {
             userStatus = "ride-assigned";
             const riderIds = driverEntry.riders
@@ -158,7 +162,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
           } else {
             // Check if user is a rider in this leg
             const riderEntry = legEntries.find((c) =>
-              c.riders.some((r) => r.rider_id === user.id)
+              c.riders.some((r) => r.rider_id === effectiveUserId)
             );
             if (riderEntry) {
               userStatus = "ride-assigned";

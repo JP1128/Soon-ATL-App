@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getEffectiveUser } from "@/lib/impersonate";
 import type { PublishedCarpoolEntry } from "@/types/database";
 
 export async function PATCH(request: Request): Promise<NextResponse> {
@@ -11,6 +12,9 @@ export async function PATCH(request: Request): Promise<NextResponse> {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const effectiveUser = await getEffectiveUser();
+  const effectiveUserId = effectiveUser?.effectiveUserId ?? user.id;
 
   const body = await request.json() as { carpoolId: string; riderOrder: string[] };
   const { carpoolId, riderOrder } = body;
@@ -26,7 +30,7 @@ export async function PATCH(request: Request): Promise<NextResponse> {
     .eq("id", carpoolId)
     .single() as { data: { id: string; driver_id: string; event_id: string; leg: string } | null };
 
-  if (!carpool || carpool.driver_id !== user.id) {
+  if (!carpool || carpool.driver_id !== effectiveUserId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

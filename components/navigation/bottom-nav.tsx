@@ -21,14 +21,18 @@ interface BottomNavProps {
   fullName: string;
   avatarUrl: string | null;
   isOrganizer: boolean;
+  isAdmin: boolean;
   hasPhoneNumber: boolean;
+  isImpersonating: boolean;
 }
 
 export function BottomNav({
   fullName,
   avatarUrl,
   isOrganizer,
+  isAdmin,
   hasPhoneNumber,
+  isImpersonating,
 }: BottomNavProps): React.ReactElement {
   const pathname = usePathname();
   const router = useRouter();
@@ -37,9 +41,9 @@ export function BottomNav({
   const [isShaking, setIsShaking] = useState(false);
   const chipRef = useRef<HTMLAnchorElement>(null);
 
-  const mainPages = ["/", "/dashboard", "/dashboard/past-events"];
+  const mainPages = ["/", "/dashboard", "/dashboard/past-events", "/dashboard/members"];
   const isMainPage = mainPages.includes(pathname);
-  const showMenu = isMainPage && isOrganizer;
+  const showMenu = (isMainPage && (isOrganizer || isAdmin)) || isImpersonating;
   const isEventPage = pathname.startsWith("/event/");
   const isProfilePage = pathname === "/profile";
   const showHomeIcon = isEventPage || isProfilePage;
@@ -76,6 +80,7 @@ export function BottomNav({
     "/profile": "Profile",
     "/dashboard": "Manage Event",
     "/dashboard/past-events": "Past Events",
+    "/dashboard/members": "Members",
   };
 
   function getPageName(): string {
@@ -90,6 +95,16 @@ export function BottomNav({
   }
 
   const pageName = getPageName();
+
+  async function exitImpersonation(): Promise<void> {
+    triggerFluidWave();
+    try {
+      await fetch("/api/impersonate", { method: "DELETE" });
+      window.location.href = "/dashboard/members";
+    } catch {
+      // silently fail
+    }
+  }
 
   return (
     <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 flex-col items-center gap-1">
@@ -131,6 +146,23 @@ export function BottomNav({
               {pathname === "/dashboard/past-events" && <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="size-3.5 text-muted-foreground" />}
               Past Events
             </DropdownMenuItem>
+            {isAdmin && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem render={<Link href="/dashboard/members" />} onClick={pathname !== "/dashboard/members" ? triggerFluidWave : undefined}>
+                  {pathname === "/dashboard/members" && <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="size-3.5 text-muted-foreground" />}
+                  Members
+                </DropdownMenuItem>
+              </>
+            )}
+            {isImpersonating && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={exitImpersonation} className="text-destructive">
+                  Exit View
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       ) : !isMainPage ? (
@@ -162,7 +194,7 @@ export function BottomNav({
           ref={chipRef}
           href="/profile"
           onClick={triggerFluidWave}
-          className={`relative inline-flex items-center gap-2.5 rounded-full border border-border/50 bg-background px-4 py-2 text-sm shadow-lg transition-all duration-200 hover:bg-muted active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isNavigating ? "scale-95" : "scale-100"} ${isShaking ? "animate-[shake_0.5s_ease-in-out]" : ""}`}
+          className={`relative inline-flex items-center gap-2.5 whitespace-nowrap rounded-full border border-border/50 bg-background px-4 py-2 text-sm shadow-lg transition-all duration-200 hover:bg-muted active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isNavigating ? "scale-95" : "scale-100"} ${isShaking ? "animate-[shake_0.5s_ease-in-out]" : ""}`}
         >
           {!hasPhoneNumber && (
             <span className="absolute -top-1 -right-1 flex size-3">
@@ -174,7 +206,7 @@ export function BottomNav({
             <AvatarImage src={avatarUrl ?? undefined} alt={fullName} />
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
-          <span className="font-medium">{fullName}</span>
+          <span className="font-medium">{fullName.split(" ")[0]}</span>
         </Link>
       )}
       </div>

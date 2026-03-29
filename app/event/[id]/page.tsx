@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getEffectiveUser } from "@/lib/impersonate";
 import { notFound } from "next/navigation";
 import { formatDisplayAddress } from "@/lib/utils";
 import { EventForm } from "@/components/forms/event-form";
@@ -27,15 +28,18 @@ export default async function EventPage({
     data: { user },
   } = await supabase.auth.getUser();
 
+  const effectiveUser = await getEffectiveUser();
+  const effectiveUserId = effectiveUser?.effectiveUserId ?? user?.id;
+
   // Get user's existing response for this event
   let existingResponse = null;
-  if (user) {
+  if (user && effectiveUserId) {
     const { data: response } = await
       supabase
         .from("responses")
         .select("*")
         .eq("event_id", id)
-        .eq("user_id", user.id)
+        .eq("user_id", effectiveUserId)
         .maybeSingle();
     existingResponse = response;
 
@@ -44,7 +48,7 @@ export default async function EventPage({
       const { data: previousResponse } = await supabase
         .from("responses")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", effectiveUserId)
         .neq("event_id", id)
         .order("updated_at", { ascending: false })
         .limit(1)

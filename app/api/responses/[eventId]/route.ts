@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getEffectiveUser } from "@/lib/impersonate";
 import { notifyUsers } from "@/lib/notifications/push";
 
 interface RouteParams {
@@ -17,12 +18,15 @@ export async function GET(_request: Request, { params }: RouteParams): Promise<N
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const effectiveUser = await getEffectiveUser();
+  const effectiveUserId = effectiveUser?.effectiveUserId ?? user.id;
+
   // Get this user's existing response for this event
   const { data, error } = await supabase
     .from("responses")
     .select("*, preferences(*)")
     .eq("event_id", eventId)
-    .eq("user_id", user.id)
+    .eq("user_id", effectiveUserId)
     .maybeSingle();
 
   if (error) {
@@ -42,6 +46,9 @@ export async function POST(request: Request, { params }: RouteParams): Promise<N
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const effectiveUser = await getEffectiveUser();
+  const effectiveUserId = effectiveUser?.effectiveUserId ?? user.id;
 
   // Verify event exists and is open
   const { data: event } = await supabase
@@ -92,7 +99,7 @@ export async function POST(request: Request, { params }: RouteParams): Promise<N
     .upsert(
       {
         event_id: eventId,
-        user_id: user.id,
+        user_id: effectiveUserId,
         role,
         pickup_address: pickup_address || null,
         pickup_lat: pickup_lat || null,
@@ -141,7 +148,7 @@ export async function POST(request: Request, { params }: RouteParams): Promise<N
   const { data: submitter } = await supabase
     .from("profiles")
     .select("full_name")
-    .eq("id", user.id)
+    .eq("id", effectiveUserId)
     .single() as { data: { full_name: string } | null };
 
   const { data: eventInfo } = await supabase
@@ -219,12 +226,15 @@ export async function DELETE(_request: Request, { params }: RouteParams): Promis
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const effectiveUser = await getEffectiveUser();
+  const effectiveUserId = effectiveUser?.effectiveUserId ?? user.id;
+
   // Find the user's response for this event
   const { data: response } = await supabase
     .from("responses")
     .select("id")
     .eq("event_id", eventId)
-    .eq("user_id", user.id)
+    .eq("user_id", effectiveUserId)
     .maybeSingle();
 
   if (!response) {
@@ -247,7 +257,7 @@ export async function DELETE(_request: Request, { params }: RouteParams): Promis
       .from("carpool_riders")
       .delete()
       .in("carpool_id", carpoolIds)
-      .eq("rider_id", user.id);
+      .eq("rider_id", effectiveUserId);
   }
 
   // Remove carpools where this user is the driver
@@ -256,7 +266,7 @@ export async function DELETE(_request: Request, { params }: RouteParams): Promis
     .from("carpools")
     .select("id")
     .eq("event_id", eventId)
-    .eq("driver_id", user.id) as { data: { id: string }[] | null };
+    .eq("driver_id", effectiveUserId) as { data: { id: string }[] | null };
 
   if (driverCarpools && driverCarpools.length > 0) {
     const driverCarpoolIds = driverCarpools.map((c: { id: string }) => c.id);
@@ -269,7 +279,7 @@ export async function DELETE(_request: Request, { params }: RouteParams): Promis
     .from("responses")
     .delete()
     .eq("id", response.id)
-    .eq("user_id", user.id);
+    .eq("user_id", effectiveUserId);
 
   if (error) {
     return NextResponse.json({ error: "Failed to remove response" }, { status: 500 });

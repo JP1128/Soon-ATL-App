@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getEffectiveUser } from "@/lib/impersonate";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
@@ -11,6 +12,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const effectiveUser = await getEffectiveUser();
+    const effectiveUserId = effectiveUser?.effectiveUserId ?? user.id;
 
     const body = await request.json();
     const { endpoint, keys } = body as {
@@ -27,7 +31,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const { error } = await supabase.from("push_subscriptions").upsert(
       {
-        user_id: user.id,
+        user_id: effectiveUserId,
         endpoint,
         keys_p256dh: keys.p256dh,
         keys_auth: keys.auth,
@@ -64,11 +68,14 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "Endpoint required" }, { status: 400 });
     }
 
+    const effectiveUser = await getEffectiveUser();
+    const effectiveUserId = effectiveUser?.effectiveUserId ?? user.id;
+
     const { error } = await supabase
       .from("push_subscriptions")
       .delete()
       .eq("endpoint", endpoint)
-      .eq("user_id", user.id);
+      .eq("user_id", effectiveUserId);
 
     if (error) {
       console.error("Failed to remove subscription:", error);

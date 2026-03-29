@@ -1,4 +1,4 @@
-export type UserRole = "organizer" | "member";
+export type UserRole = "organizer" | "member" | "admin";
 export type EventStatus = "draft" | "open" | "closed" | "published";
 export type ResponseRole = "driver" | "rider" | "attending";
 export type PreferenceType = "prefer" | "avoid";

@@ -98,6 +98,17 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Only organizers and admins can assign riders
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile || (profile.role !== "organizer" && profile.role !== "admin")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const body = await request.json();
   const { driverId, riderId, leg } = body as { driverId: string; riderId: string; leg: string };
 
@@ -202,6 +213,17 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Only organizers and admins can remove riders
+  const { data: delProfile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (!delProfile || (delProfile.role !== "organizer" && delProfile.role !== "admin")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const body = await request.json();
   const { riderId, leg } = body as { riderId: string; leg: string };
 
@@ -251,7 +273,7 @@ export async function PATCH(
     .eq("id", user.id)
     .single();
 
-  if (profile?.role !== "organizer") {
+  if (!profile || (profile.role !== "organizer" && profile.role !== "admin")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
