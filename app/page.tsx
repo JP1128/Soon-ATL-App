@@ -143,12 +143,17 @@ export default async function HomePage(): Promise<React.ReactElement> {
               .map((r) => r.rider_id);
             const riders = await resolveRiders(riderIds);
 
-            // Fetch pickup order sent state
+            // Fetch pickup order sent state by driver + event + leg
+            // (snapshot carpool IDs can be stale after re-matching)
             const { data: carpoolSentData } = await supabase
               .from("carpools")
               .select("pickup_order_sent_at, pickup_order_sent_riders")
-              .eq("id", driverEntry.id)
-              .single() as { data: { pickup_order_sent_at: string | null; pickup_order_sent_riders: string[] | null } | null };
+              .eq("event_id", activeEvent!.id)
+              .eq("driver_id", effectiveUserId!)
+              .eq("leg", legKey)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle() as { data: { pickup_order_sent_at: string | null; pickup_order_sent_riders: string[] | null } | null };
 
             if (legKey === "before") {
               beforeCarpoolId = driverEntry.id;

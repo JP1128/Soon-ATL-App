@@ -660,6 +660,7 @@ export function CarpoolDetailView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           carpoolId,
+          leg,
           riderOrder: riders.map((r) => r.id),
         }),
       });
