@@ -8,9 +8,35 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Search01Icon,
   Location01Icon,
+  Clock01Icon,
 } from "@hugeicons/core-free-icons"
 import { GOOGLE_MAPS_LIBRARIES } from "@/lib/google-maps/constants"
+
 const DEFAULT_CENTER = { lat: 33.749, lng: -84.388 } // Atlanta
+const RECENT_ADDRESSES_KEY = "recent-addresses"
+const MAX_RECENT_ADDRESSES = 3
+
+function getRecentAddresses(): AddressResult[] {
+  try {
+    const stored = localStorage.getItem(RECENT_ADDRESSES_KEY)
+    if (!stored) return []
+    const parsed = JSON.parse(stored) as AddressResult[]
+    return Array.isArray(parsed) ? parsed.slice(0, MAX_RECENT_ADDRESSES) : []
+  } catch {
+    return []
+  }
+}
+
+function saveRecentAddress(result: AddressResult): void {
+  try {
+    const existing = getRecentAddresses()
+    const filtered = existing.filter((a) => a.address !== result.address)
+    const updated = [result, ...filtered].slice(0, MAX_RECENT_ADDRESSES)
+    localStorage.setItem(RECENT_ADDRESSES_KEY, JSON.stringify(updated))
+  } catch {
+    // localStorage unavailable
+  }
+}
 
 interface AddressResult {
   address: string
@@ -50,6 +76,9 @@ function AddressPickerOverlay({
     initialLat && initialLng ? { lat: initialLat, lng: initialLng } : null
   )
 
+  const [recentAddresses, setRecentAddresses] = React.useState<AddressResult[]>([])
+  const [keyboardOpen, setKeyboardOpen] = React.useState(false)
+
   const searchInputRef = React.useRef<HTMLInputElement>(null)
   const sessionTokenRef = React.useRef<google.maps.places.AutocompleteSessionToken | null>(null)
   const geocoderRef = React.useRef<google.maps.Geocoder | null>(null)
@@ -68,6 +97,7 @@ function AddressPickerOverlay({
       setMounted(true)
       setQuery("")
       setSuggestions([])
+      setRecentAddresses(getRecentAddresses())
       setSelectedPlace(
         initialLat && initialLng ? { address: initialAddress, lat: initialLat, lng: initialLng } : null
       )
@@ -79,10 +109,27 @@ function AddressPickerOverlay({
       })
     } else {
       setVisible(false)
+      setKeyboardOpen(false)
       const timer = setTimeout(() => setMounted(false), 200)
       return () => clearTimeout(timer)
     }
   }, [open, initialAddress, initialLat, initialLng])
+
+  // Detect keyboard open/close via visualViewport
+  React.useEffect(() => {
+    if (!open) return
+    const vv = window.visualViewport
+    if (!vv) return
+
+    const threshold = window.innerHeight * 0.25
+    function onResize(): void {
+      const heightDiff = window.innerHeight - (vv?.height ?? window.innerHeight)
+      setKeyboardOpen(heightDiff > threshold)
+    }
+
+    vv.addEventListener("resize", onResize)
+    return () => vv.removeEventListener("resize", onResize)
+  }, [open])
 
   // Lock body scroll
   React.useEffect(() => {
@@ -164,10 +211,13 @@ function AddressPickerOverlay({
       const lat = place.location?.lat() ?? 0
       const lng = place.location?.lng() ?? 0
       const address = place.formattedAddress ?? placePrediction.text.toString()
-      setSelectedPlace({ address, lat, lng })
+      const result = { address, lat, lng }
+      setSelectedPlace(result)
       setMarkerPos({ lat, lng })
       setQuery(address)
       setSuggestions([])
+      saveRecentAddress(result)
+      setRecentAddresses(getRecentAddresses())
 
       // Refresh session token after a selection
       sessionTokenRef.current = new google.maps.places.AutocompleteSessionToken()
@@ -198,6 +248,7 @@ function AddressPickerOverlay({
 
   function handleConfirm(): void {
     if (selectedPlace) {
+      saveRecentAddress(selectedPlace)
       onConfirm(selectedPlace)
       onClose()
     }
@@ -216,7 +267,8 @@ function AddressPickerOverlay({
       />
       <div
         className={cn(
-          "absolute inset-x-0 top-[15%] flex justify-center pointer-events-none transition-all duration-100",
+          "absolute inset-x-0 flex justify-center pointer-events-none transition-all duration-200",
+          keyboardOpen ? "top-[5%]" : "top-1/2 -translate-y-1/2",
           visible ? "opacity-100 scale-100" : "opacity-0 scale-95"
         )}
       >
@@ -246,10 +298,34 @@ function AddressPickerOverlay({
             />
           </div>
 
+          {/* Recent addresses */}
+          {!query.trim() && !selectedPlace && recentAddresses.length > 0 && (
+            <div className="mt-3 -mx-2">
+              <p className="px-2 text-xs font-medium text-muted-foreground mb-1">Recent</p>
+              {recentAddresses.map((recent) => (
+                <button
+                  key={recent.address}
+                  type="button"
+                  onClick={() => {
+                    searchInputRef.current?.blur()
+                    setSelectedPlace(recent)
+                    setMarkerPos({ lat: recent.lat, lng: recent.lng })
+                    setQuery(recent.address)
+                    setSuggestions([])
+                  }}
+                  className="flex w-full items-start gap-3 rounded-xl px-2 py-2.5 text-left transition-colors hover:bg-muted/50"
+                >
+                  <HugeiconsIcon icon={Clock01Icon} className="mt-0.5 size-4 shrink-0 text-muted-foreground" strokeWidth={1.5} />
+                  <p className="text-sm truncate">{recent.address}</p>
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Suggestions list */}
           {suggestions.length > 0 && !selectedPlace && (
             <div className="mt-3 max-h-48 overflow-y-auto -mx-2">
-              {suggestions.map((suggestion) => {
+              {suggestions.slice(0, 3).map((suggestion) => {
                 const placePrediction = suggestion.placePrediction
                 if (!placePrediction) return null
                 return (
@@ -280,6 +356,8 @@ function AddressPickerOverlay({
           {!suggestions.length && !selectedPlace && query.trim() && (
             <p className="mt-3 text-center text-sm text-muted-foreground">No results found</p>
           )}
+
+          {/* Spacer when empty state and no keyboard - keeps visual balance */}
 
           {/* Map after selection */}
           {selectedPlace && markerPos && isLoaded && (

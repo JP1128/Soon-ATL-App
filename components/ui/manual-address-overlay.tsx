@@ -22,6 +22,7 @@ function ManualAddressOverlay({
   const [mounted, setMounted] = React.useState(false)
   const [visible, setVisible] = React.useState(false)
   const [draft, setDraft] = React.useState(initialAddress)
+  const [keyboardOpen, setKeyboardOpen] = React.useState(false)
   const inputRef = React.useRef<HTMLInputElement>(null)
 
   React.useEffect(() => {
@@ -33,10 +34,27 @@ function ManualAddressOverlay({
       })
     } else {
       setVisible(false)
+      setKeyboardOpen(false)
       const timer = setTimeout(() => setMounted(false), 200)
       return () => clearTimeout(timer)
     }
   }, [open, initialAddress])
+
+  // Detect keyboard open/close via visualViewport
+  React.useEffect(() => {
+    if (!open) return
+    const vv = window.visualViewport
+    if (!vv) return
+
+    const threshold = window.innerHeight * 0.25
+    function onResize(): void {
+      const heightDiff = window.innerHeight - (vv?.height ?? window.innerHeight)
+      setKeyboardOpen(heightDiff > threshold)
+    }
+
+    vv.addEventListener("resize", onResize)
+    return () => vv.removeEventListener("resize", onResize)
+  }, [open])
 
   React.useEffect(() => {
     if (open) {
@@ -72,7 +90,8 @@ function ManualAddressOverlay({
       />
       <div
         className={cn(
-          "absolute inset-x-0 top-[20%] flex justify-center pointer-events-none transition-all duration-100",
+          "absolute inset-x-0 flex justify-center pointer-events-none transition-all duration-200",
+          keyboardOpen ? "top-[5%]" : "top-1/2 -translate-y-1/2",
           visible ? "opacity-100 scale-100" : "opacity-0 scale-95"
         )}
       >
